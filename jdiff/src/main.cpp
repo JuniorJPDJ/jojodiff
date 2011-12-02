@@ -133,13 +133,16 @@ using namespace std ;
 #include "JOutAsc.h"
 #include "JOutRgn.h"
 #include "JFile.h"
-#include "JFileAhead.h"
 
-#ifndef __MINGW32__
+
+#ifdef __MINGW32__
+#include "JFileAhead.h"
+#else
 #include <iostream>
 #include <istream>
 #include <fstream>
 #include "JFileIStream.h"
+#include "JFileIStreamAhead.h"
 #endif
 
 using namespace JojoDiff ;
@@ -386,38 +389,44 @@ int main(int aiArgCnt, char *acArg[])
 #endif
 
   /* Open first file */
-  if (llBufSze > 0){
-      lfFilOrg = fopen(lcFilNamOrg, "rb") ;
-      if (lfFilOrg != NULL){
-          lpFilOrg = new JFileAhead(lfFilOrg, "Org", llBufSze, liBlkSze);
-      }
-#ifndef __MINGW32__
-  } else {
-      liFilOrg->open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
-      if (liFilOrg->is_open()){
-          lpFilOrg = new JFileIStream(liFilOrg, "Org");
-      }
-#endif
+#ifdef __MINGW32__
+  lfFilOrg = fopen(lcFilNamOrg, "rb") ;
+  if (lfFilOrg != NULL){
+      lpFilOrg = new JFileAhead(lfFilOrg, "Org", llBufSze, liBlkSze);
   }
+#else
+  liFilOrg = new ifstream();
+  liFilOrg->open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
+  if (liFilOrg->is_open()){
+	  if (llBufSze > 0){
+		  lpFilOrg = new JFileIStreamAhead(liFilOrg, "Org",  llBufSze, liBlkSze);
+	  } else {
+		  lpFilOrg = new JFileIStream(liFilOrg, "Org");
+	  }
+  }
+#endif
   if (lpFilOrg == NULL){
       fprintf(JDebug::stddbg, "Could not open first file %s for reading.\n", lcFilNamOrg);
       exit(EXI_FRT);
   }
 
   /* Open second file */
-  if (llBufSze > 0){
-      lfFilNew = fopen(lcFilNamNew, "rb") ;
-      if (lfFilNew != NULL){
-          lpFilNew = new JFileAhead(lfFilNew, "New", llBufSze, liBlkSze);
-      }
-#ifndef __MINGW32__
-  } else {
-      liFilNew->open(lcFilNamNew, ios_base::in | ios_base::binary) ;
-      if (liFilNew->is_open()){
-          lpFilNew = new JFileIStream(liFilNew, "New");
-      }
-#endif
+#ifdef __MINGW32__
+  lfFilNew = fopen(lcFilNamNew, "rb") ;
+  if (lfFilNew != NULL){
+      lpFilNew = new JFileAhead(lfFilNew, "New", llBufSze, liBlkSze);
   }
+#else
+  liFilNew = new ifstream();
+  liFilNew->open(lcFilNamNew, ios_base::in | ios_base::binary) ;
+  if (liFilNew->is_open()){
+	  if (llBufSze > 0){
+		  lpFilNew = new JFileIStreamAhead(liFilNew, "New",  llBufSze, liBlkSze);
+	  } else {
+		  lpFilNew = new JFileIStream(liFilNew, "New");
+	  }
+  }
+#endif
   if (lpFilNew == NULL){
       fprintf(JDebug::stddbg, "Could not open second file %s for reading.\n", lcFilNamNew);
       exit(EXI_SCD);

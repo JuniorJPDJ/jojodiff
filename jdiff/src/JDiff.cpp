@@ -136,7 +136,7 @@
 #include <limits.h>
 
 #ifdef _FILE_OFFSET_BITS
-#warning FILE OFFSET BITS set to _FILE_OFFSET_BITS
+#warning FILE OFFSET BITS set
 #endif
 #ifdef _LARGEFILE64_SOURCE
 #warning _LARGEFILE64_SOURCE set
