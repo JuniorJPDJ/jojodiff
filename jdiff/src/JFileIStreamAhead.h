@@ -1,5 +1,5 @@
 /*
- * JFileAhead.cpp
+ * JFileIStreamAhead.cpp
  *
  * Copyright (C) 2002-2011 Joris Heirbaut
  *
@@ -19,9 +19,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef JFILEAHEAD_H_
-#define JFILEAHEAD_H_
+#ifndef JFILEISTREAMAHEAD_H_
+#define JFILEISTREAMAHEAD_H_
 
+#include <istream>
 using namespace std;
 
 #include "JDefs.h"
@@ -33,10 +34,10 @@ namespace JojoDiff {
  * accesses files, that is reading ahead to find equal regions and then coming
  * back to the base position for actual comparisons.
  */
-class JFileAhead: public JFile {
+class JFileIStreamAhead: public JFile {
 public:
-    JFileAhead(FILE * apFil, const char *asFid, const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
-    virtual ~JFileAhead();
+    JFileIStreamAhead(istream * apFil, const char *asFid, const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
+    virtual ~JFileIStreamAhead();
 
     /**
      * Get one byte from the file at given position. Position is incremented by one.
@@ -83,7 +84,7 @@ private:
 private:
     /* Context */
     const char *msFid;  /* file id (for debugging)                      */
-    FILE *mpFile;     /* file handle                                  */
+    istream *mpStream;  /* file handle                                  */
 
     /* Settings */
     long mlBufSze;      /* File lookahead buffer size                   */
@@ -104,4 +105,4 @@ private:
     long mlFabSek ;      /* Number of times an fseek operation was performed  */
 };
 }
-#endif /* JFILEAHEAD_H_ */
+#endif /* JFileIStreamAhead_H_ */

@@ -71,21 +71,36 @@
 /*
  * Global definitions
  */
+#define JDIFF_VERSION   "0.8.1 (beta) December 2011"
+#define JDIFF_COPYRIGHT "Copyright (C) 2002-2005,2009,2011 Joris Heirbaut"
+
 #define uchar unsigned char
 #define ulong unsigned long int         // unsigned long
 #define null  NULL
 
 #ifdef _LARGESAMPLE
-#define hkey  unsigned long long int    // 64-bit hash keys
+typedef unsigned long long int  hkey ;  // 64-bit hash keys
 #define PRIhkey "llx"                   // format to print a hkey
 #else
-#define hkey  unsigned long int         // 32-bit hash keys
+typedef unsigned long int hkey ;        // 32-bit hash keys
 #define PRIhkey "lx"                    // format to print a hkey
 #endif /* _LARGESAMPLE */
+const int SMPSZE = (int) sizeof(hkey) * 8 ;                                         // Number of bytes in a sample
+const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1))) ;  // Largest positive offset
 
-#define EOB (EOF - 1)                    // End-Of-Buffer constant
-const int SMPSZE = (int) sizeof(hkey) * 8 ;  										// Number of bytes in a sample
-const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1))) ;	// Largest positive offset
+#define EOB (EOF - 1)                   // End-Of-Buffer constant
+#define EXI_DIF  0                      // OK Exit code, differences found
+#define EXI_EQL  1                      // OK Exit code, no differences found
+#define EXI_ARG  2                      // Error: not enough arguments
+#define EXI_FRT  3                      // Error opening first file
+#define EXI_SCD  4                      // Error opening second file
+#define EXI_OUT  5                      // Error opening output file
+#define EXI_SEK  6                      // Error seeking file
+#define EXI_LRG  7                      // Error on 64-bit number
+#define EXI_RED  8                      // Error reading file
+#define EXI_WRI  9                      // Error writing file
+#define EXI_MEM  10                     // Error allocating memory
+#define EXI_ERR  20                     // Spurious error occured
 
 /**
  * Output routine constants

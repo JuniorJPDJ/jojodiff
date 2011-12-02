@@ -20,7 +20,6 @@
  */
 
 #include <stdlib.h>
-#include <exception>
 #include <new>
 #include <string.h>
 #include <limits.h>
@@ -71,10 +70,11 @@ JHashPos::JHashPos(int aiSze)
 				miHshPme, miHshSze,
 				mzHshTblPos, &mzHshTblPos[miHshPme], mkHshTblHsh, &mkHshTblHsh[miHshPme]) ;
 #endif
-
+#ifndef __MINGW32__
 	if ( mzHshTblPos == null ) {
 	    throw bad_alloc() ;
 	}
+#endif
 	memset(mzHshTblPos, 0, miHshSze);
 }
 

@@ -127,8 +127,11 @@
  * Joris Heirbaut        v0.8    30-06-2011 C++ version
  * Joris Heirbaut        v0.8a   08-07-2011 Optimize position 0
  * Joris Heirbaut        v0.8b   02-09-2011 Switch order of ahead/backtrack/skip logic
+ * Joris Heirbaut        v0.8.1  30-11-2011 Revert to use of fread/fseek (MinGW ifstream.gseek does not correctly handle files >2GB)
+ * Joris Heirbaut        v0.8.1  30-11-2011 Throuw out exception handling for MinGW (trying to reduce exe size)
  *
  *******************************************************************************/
+#include "JDefs.h"
 #include "JDiff.h"
 #include <limits.h>
 
@@ -183,7 +186,7 @@ JDiff::~JDiff() {
 *   - then continue reading on both files until equal blocks are reached,
 *
 *******************************************************************************/
-void JDiff::jdiff()
+int JDiff::jdiff()
 {
     int lcOrg;              /* byte from original file */
     int lcNew;              /* byte from new file */
@@ -274,6 +277,8 @@ void JDiff::jdiff()
 
             /* Find a new equals-reqion */
             lbFnd = ufFndAhd(lzPosOrg, lzPosNew, lzSkpOrg, lzSkpNew, lzAhd) ;
+            if (lbFnd < 0)
+                return lbFnd ;
 
             #if debug
             if (JDebug::gbDbg[DBGAHD])
@@ -309,6 +314,12 @@ void JDiff::jdiff()
     /* Flush output buffer */
     ufPutEql(lzPosOrg, lzPosNew, lzEql, lbEql);
     mpOut->put(ESC, 0, 0, 0, lzPosOrg, lzPosNew);
+
+    /* Return code */
+    if (lcNew < EOB || lcOrg < EOB){
+        return (lcNew < lcOrg)?lcNew:lcOrg;
+    }
+    return 0;
 } /* jdiff */
 
 /**
@@ -334,7 +345,9 @@ void JDiff::ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql,
  * @param azSkpOrg  out: number of bytes to skip (delete) in left file
  * @param azSkpNew  out: number of bytes to skip (insert) in right file
  * @param azAhd     out: number of bytes to skip on bith files before similarity is reached
- * @return
+ * @return 0    no solution found
+ * @return 1    solution found
+ * @return < 0  error: see EXI-codes
  */
 int JDiff::ufFndAhd (
   off_t const &azRedOrg,
@@ -356,7 +369,8 @@ int JDiff::ufFndAhd (
 
   /* Prescan the original file? */
   if (miSrcScn == 1) {
-    ufFndAhdScn() ;
+    int liRet = ufFndAhdScn() ;
+    if (liRet < 0) return liRet ;
     miSrcScn = 2 ;
   }
 
@@ -490,6 +504,13 @@ int JDiff::ufFndAhd (
   } /* if ufMchFre(..) */
 
   /*
+   * Check for errors
+   */
+  if (miValNew < EOB || miValOrg < EOB){
+      return (miValNew < miValOrg) ? miValNew : miValOrg;
+  }
+
+  /*
    * Get the best match and calculate the offsets
    */
   if (! gpMch->get(azRedOrg, azRedNew, /* out */ lzFndOrg, lzFndNew))
@@ -497,7 +518,7 @@ int JDiff::ufFndAhd (
     azSkpNew = 0 ;
     azAhd    = (mzAhdNew - azRedNew) - gpHsh->get_reliability() ;
     if (azAhd < SMPSZE) azAhd = SMPSZE ;
-    return false ;
+    return 0 ;
   }  else  {
     if (lzFndOrg >= azRedOrg)
     { if (lzFndOrg - azRedOrg >= lzFndNew - azRedNew)
@@ -529,7 +550,7 @@ int JDiff::ufFndAhd (
       mzAhdOrg = 0 ; // TODO reset matching table too?
     }
 
-    return true ;
+    return 1 ;
   }
 }
 
@@ -562,7 +583,7 @@ void JDiff::ufFndAhdGet(JFile *apFil, const off_t &azPos, int &acVal, int &aiEql
  * Prescan the original file: calculates a hash-key for every 32-byte sample
  * in the left file and stores them with their position in a hash-table.
  */
-void JDiff::ufFndAhdScn ()
+int JDiff::ufFndAhdScn ()
 {
   hkey  lkHshOrg=0;     // Current hash value for original file
   int   liEqlOrg=0;     // Number of times current value occurs in hash value
@@ -615,5 +636,10 @@ void JDiff::ufFndAhdScn ()
   if (JDebug::gbDbg[DBGDST])
 	  gpHsh->dist(lzPosOrg, 128);
 #endif
+
+  if (lcValOrg < EOB)
+      return lcValOrg ;
+  else
+      return 0 ;
 } /* ufFndAhdScn */
 } /* namespace */

@@ -1,5 +1,5 @@
 /*
- * JFileAhead.cpp
+ * JFileIStreamAhead.cpp
  *
  * Copyright (C) 2002-2011 Joris Heirbaut
  *
@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <exception>
 
-#include "JFileAhead.h"
+#include "JFileIStreamAhead.h"
 #include "JDebug.h"
 
 namespace JojoDiff {
@@ -31,10 +31,15 @@ namespace JojoDiff {
 /**
  * Construct a buffered JFile on an istream.
  */
-JFileAhead::JFileAhead(FILE * apFil, const char *asFid, const long alBufSze, const int aiBlkSze ) :
-        mpFile(apFil), mlBufSze(alBufSze), miBlkSze(aiBlkSze), mlFabSek(0)
+JFileIStreamAhead::JFileIStreamAhead(istream * apFil, const char *asFid, const long alBufSze, const int aiBlkSze ) :
+        mpStream(apFil), mlBufSze(alBufSze), miBlkSze(aiBlkSze), mlFabSek(0)
 {
     mpBuf = (uchar *) malloc(mlBufSze) ;
+#ifndef __MINGW32__
+    if (mpBuf == null){
+        throw bad_alloc() ;
+    }
+#endif
 
     mpMax = mpBuf + mlBufSze ;
     mpInp = mpBuf;
@@ -54,19 +59,19 @@ JFileAhead::JFileAhead(FILE * apFil, const char *asFid, const long alBufSze, con
 #endif
     }
 
-JFileAhead::~JFileAhead() {
+JFileIStreamAhead::~JFileIStreamAhead() {
 	if (mpBuf != null) free(mpBuf) ;
 }
 
 /**
  * Return number of seeks performed.
  */
-long JFileAhead::seekcount(){return mlFabSek; }
+long JFileIStreamAhead::seekcount(){return mlFabSek; }
 
 /**
  * Gets one byte from the lookahead file.
  */
-int JFileAhead::get (
+int JFileIStreamAhead::get (
     const off_t &azPos, /* position to read from                */
     const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
 ) {
@@ -100,7 +105,7 @@ int JFileAhead::get (
  * @param aiTyp     0=read, 1=hard ahead, 2=soft ahead
  * @return data at requested position, EOF or EOB.
  */
-int JFileAhead::get_frombuffer (
+int JFileIStreamAhead::get_frombuffer (
     const off_t &azPos,    /* position to read from                */
     const int aiTyp        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
@@ -176,7 +181,7 @@ int JFileAhead::get_frombuffer (
 /**
  * Read data from the file into the buffer, then read from the buffer.
  */
-int JFileAhead::get_outofbuffer (
+int JFileIStreamAhead::get_outofbuffer (
     const off_t &azPos,    /* position to read from                */
     const int aiTyp,       /* 0=read, 1=hard ahead, 2=soft ahead   */
     const int aiSek        /* perform seek: 0=append, 1=seek, 2=scroll back  */
@@ -259,12 +264,6 @@ int JFileAhead::get_outofbuffer (
             mzPosRed = -1;
             miRedSze = 0 ;
             break ;
-
-        default:
-            // TODO make aiSek an enum
-            // To get rid of uninitialized warning
-            liTdo = 0 ;
-            lzPos = 0 ;
     } /* switch aiSek */
 
     if (aiSek != 0) {
@@ -273,19 +272,22 @@ int JFileAhead::get_outofbuffer (
         #endif
 
         mlFabSek++ ;
-        if (fseek(mpFile, lzPos, SEEK_SET) != 0) {
-            return - EXI_SEK ;
-        }
+        mpStream->seekg(lzPos) ; // throws an exception in case of error
     } /* if liSek */
 
     /* Read a chunk of data (in 16 kbyte blocks) */
-    liDne = fread(lpInp, 1, liTdo, mpFile );
+    mpStream->read((char *)lpInp, liTdo) ;
+    liDne = mpStream->gcount();
     if (liDne < liTdo) {
       #if debug
       if (JDebug::gbDbg[DBGRED])
         fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOF.\n",
           msFid, azPos, aiTyp);
       #endif
+      // TODO reduce number of times we pass here, init mzPosEof to MAX_OFF_T
+      // Reset EOF state
+      if (mpStream->eof())
+          mpStream->clear();
 
       mzPosEof = lzPos + (off_t) liDne ;
       if (liDne == 0)
@@ -312,10 +314,7 @@ int JFileAhead::get_outofbuffer (
             } else {
                 /* Restore input position */
                 mlFabSek++;
-
-                if (fseek(mpFile, mzPosInp, SEEK_SET) != 0) {
-                    return - EXI_SEK ;
-                }
+            	mpStream->seekg(mzPosInp); // throws an exception in case of error
             }
             break ;
 

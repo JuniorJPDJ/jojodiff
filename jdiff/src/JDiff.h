@@ -128,6 +128,10 @@
  * Joris Heirbaut        v0.7x   05-11-2009 ufMchAdd: hashed method
  * Joris Heirbaut        v0.7y   13-11-2009 ufMchBst: store unmatched samples too (reduce use of ufFabFnd)
  * Joris Heirbaut        v0.8    30-06-2011 C++ version
+ * Joris Heirbaut        v0.8a   08-07-2011 Optimize position 0
+ * Joris Heirbaut        v0.8b   02-09-2011 Switch order of ahead/backtrack/skip logic
+ * Joris Heirbaut        v0.8.1  30-11-2011 Revert to use of fread/fseek (MinGW ifstream.gseek does not correctly handle files >2GB)
+ * Joris Heirbaut        v0.8.1  30-11-2011 Throuw out exception handling for MinGW (trying to reduce exe size)
  *
  *******************************************************************************/
 
@@ -180,8 +184,16 @@ public:
 	*
 	* Throws a bad_alloc exception in case of memory error.
 	* Throws an io_base::failure in case of i/o error.
+	*
+	* @return 0             ok
+	* @return EXI_SEK       Error seeking file
+    * @return EXI_LRG  7    Error on 64-bit number
+    * @return EXI_RED  8    Error reading file
+    * @return EXI_WRI  9    Error writing file
+    * @return EXI_MEM  10   Error allocating memory
+    * @return EXI_ERR  20   Spurious error occured
 	*******************************************************************************/
-	void jdiff ();
+	int jdiff ();
 
 	/* getters */
 	JHashPos * getHsh(){return gpHsh;};
@@ -237,7 +249,7 @@ private:
 	);
 
     /** Scans the original file and fills up the hashtable. */
-    void ufFndAhdScn () ;
+    int ufFndAhdScn () ;
 
     /** Hashes the next byte from specified file. */
     void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) ;

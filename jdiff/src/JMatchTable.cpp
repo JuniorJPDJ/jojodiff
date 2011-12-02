@@ -64,9 +64,11 @@ JMatchTable::JMatchTable (JHashPos const * const cpHsh,  JFile  * const apFilOrg
     // allocate table
 	// TODO only allocate max number of elements
     msMch = (rMch *) malloc(sizeof(rMch) * MCH_MAX) ;
+#ifndef __MINGW32__
     if ( msMch == null ) {
         throw bad_alloc() ;
     }
+#endif
 
 	// initialize linked list of free nodes
     for (int liIdx=0; liIdx < MCH_MAX - 1; liIdx++) {
