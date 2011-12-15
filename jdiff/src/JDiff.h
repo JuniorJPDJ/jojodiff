@@ -133,7 +133,7 @@
  * Joris Heirbaut        v0.8a   08-07-2011 Optimize position 0
  * Joris Heirbaut        v0.8b   02-09-2011 Switch order of ahead/backtrack/skip logic
  * Joris Heirbaut        v0.8.1  30-11-2011 Revert to use of fread/fseek (MinGW ifstream.gseek does not correctly handle files >2GB)
- * Joris Heirbaut        v0.8.1  30-11-2011 Throuw out exception handling for MinGW (trying to reduce exe size)
+ * Joris Heirbaut        v0.8.1  30-11-2011 Throw out exception handling for MinGW (trying to reduce exe size)
  *
  *******************************************************************************/
 

@@ -19,6 +19,10 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Author                Version Date       Modification
+ * --------------------- ------- -------    -----------------------
+ * Joris Heirbaut        v0.8.2  06-12-2011 Use jfopen/jfclose/jfseek/jfread to avoid interference with LARGEFILE redefinitions
  */
 
 #ifndef _JDEFS_H
