@@ -273,7 +273,7 @@ int JFileAhead::get_outofbuffer (
         #endif
 
         mlFabSek++ ;
-        if (fseek(mpFile, lzPos, SEEK_SET) != 0) {
+        if (jfseek(mpFile, lzPos, SEEK_SET) != 0) {
             return - EXI_SEK ;
         }
     } /* if liSek */
@@ -313,7 +313,7 @@ int JFileAhead::get_outofbuffer (
                 /* Restore input position */
                 mlFabSek++;
 
-                if (fseek(mpFile, mzPosInp, SEEK_SET) != 0) {
+                if (jfseek(mpFile, mzPosInp, SEEK_SET) != 0) {
                     return - EXI_SEK ;
                 }
             }

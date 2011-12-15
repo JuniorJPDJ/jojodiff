@@ -42,6 +42,14 @@
 
 #define BLKSZE 4096
 
+#ifdef _FILE_OFFSET_BITS
+#warning FILE OFFSET BITS set
+#endif
+#ifdef _LARGEFILE64_SOURCE
+#warning _LARGEFILE64_SOURCE set
+#endif
+
+
 /*
  * Global settings (may be modified by commandline options)
  */
@@ -127,7 +135,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
         case MOD:
           liOpr = MOD;
           if (giVerbse == 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" MOD ...    \n", ftell(asFilOrg)+lzMod-1, ftell(asFilOut)) ;
+            fprintf(stddbg, ""P8zd" "P8zd" MOD ...    \n", jftell(asFilOrg)+lzMod-1, jftell(asFilOut)) ;
           }
           lbChg = true;
           break ;
@@ -136,7 +144,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           liOpr = INS;
           if (giVerbse == 1) {
             fprintf(stddbg, ""P8zd" "P8zd" INS ...    \n",
-                    ftell(asFilOrg)+lzMod-1, ftell(asFilOut))   ;
+                    jftell(asFilOrg)+lzMod-1, jftell(asFilOut))   ;
           }
           lbChg = true;
           break ;
@@ -146,10 +154,10 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           lzOff = ufGetInt(asFilPch);
           if (giVerbse >= 1) {
             fprintf(stddbg, ""P8zd" "P8zd" DEL %"PRIzd"\n",
-                    ftell(asFilOrg)+lzMod, ftell(asFilOut), lzOff)  ;
+                    jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff)  ;
           }
 
-          if (fseek(asFilOrg, lzOff + lzMod, SEEK_CUR) != 0) {
+          if (jfseek(asFilOrg, lzOff + lzMod, SEEK_CUR) != 0) {
             fprintf(stderr, "Could not position on original file (seek %"PRIzd" + %"PRIzd").\n", lzOff, lzMod);
             exit(EXI_SEK);
           }
@@ -162,11 +170,11 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           lzOff = ufGetInt(asFilPch);
           if (giVerbse >= 1) {
             fprintf(stddbg, ""P8zd" "P8zd" EQL %"PRIzd"\n",
-                    ftell(asFilOrg)+lzMod, ftell(asFilOut), lzOff) ;
+                    jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff) ;
           }
 
           if (lzMod > 0) {
-              if (fseek(asFilOrg, lzMod, SEEK_CUR) != 0) {
+              if (jfseek(asFilOrg, lzMod, SEEK_CUR) != 0) {
                   fprintf(stderr, "Could not position on original file (skip %"PRIzd").\n", lzMod);
                   exit(EXI_SEK);
               }
@@ -201,10 +209,10 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           lzOff = ufGetInt(asFilPch) ;
           if (giVerbse >= 1) {
             fprintf(stddbg, ""P8zd" "P8zd" BKT %"PRIzd"\n",
-                    ftell(asFilOrg)+lzMod, ftell(asFilOut), lzOff)   ;
+                    jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff)   ;
           }
 
-          if (fseek(asFilOrg, lzMod - lzOff, SEEK_CUR) != 0) {
+          if (jfseek(asFilOrg, lzMod - lzOff, SEEK_CUR) != 0) {
             fprintf(stderr, "Could not position on original file (seek back %"PRIzd" - %"PRIzd").\n",
                     lzMod, lzOff);
             exit(EXI_SEK);
@@ -216,14 +224,14 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
         case ESC:
           if (giVerbse > 2) {
             fprintf(stddbg, ""P8zd" "P8zd" ESC ESC\n",
-                    ftell(asFilOrg)+lzMod, ftell(asFilOut)) ;
+                    jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
           }
           break;
 
         default:
           if (giVerbse > 2) {
             fprintf(stddbg, ""P8zd" "P8zd" ESC XXX\n",
-                    ftell(asFilOrg)+lzMod, ftell(asFilOut)) ;
+                    jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
           }
           lbEsc = true;
           break;
@@ -243,7 +251,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
             lzMod ++ ;
             if (giVerbse > 2) {
                 fprintf(stddbg, P8zd" "P8zd" MOD %3o ESC\n",
-                        ftell(asFilOrg)+lzMod-1, ftell(asFilOut)-1, ESC)  ;
+                        jftell(asFilOrg)+lzMod-1, jftell(asFilOut)-1, ESC)  ;
             }
           }
 
@@ -251,7 +259,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           lzMod ++ ;
           if (giVerbse > 2) {
               fprintf(stddbg, P8zd" "P8zd" MOD %3o %c\n",
-                      ftell(asFilOrg)+lzMod-1, ftell(asFilOut)-1, liInp,
+                      jftell(asFilOrg)+lzMod-1, jftell(asFilOut)-1, liInp,
                       ((liInp >= 32 && liInp <= 127)?(char) liInp:' '))  ;
           }
           break ;
@@ -260,14 +268,14 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           if (lbEsc) {
             if (giVerbse > 2) {
                 fprintf(stddbg, P8zd" "P8zd" INS %3o ESC\n",
-                        ftell(asFilOrg)+lzMod-1, ftell(asFilOut), ESC)  ;
+                        jftell(asFilOrg)+lzMod-1, jftell(asFilOut), ESC)  ;
             }
             putc(ESC, asFilOut) ;
           }
 
           if (giVerbse > 2) {
               fprintf(stddbg, P8zd" "P8zd" INS %3o %c\n",
-                      ftell(asFilOrg)+lzMod-1, ftell(asFilOut), liInp,
+                      jftell(asFilOrg)+lzMod-1, jftell(asFilOut), liInp,
                       ((liInp >= 32 && liInp <= 127)?(char) liInp:' '))  ;
           }
 
@@ -281,7 +289,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
 
   if (giVerbse > 1) {
       fprintf(stddbg, P8zd" "P8zd" EOF",
-              ftell(asFilOrg)+lzMod, ftell(asFilOut))  ;
+              jftell(asFilOrg)+lzMod, jftell(asFilOut))  ;
   }
 }
 
@@ -379,7 +387,7 @@ int main(int aiArgCnt, char *acArg[])
   if ( strcmp(lcFilNamOrg, std) == 0 )
     lpFilOrg = stdin ;
   else
-    lpFilOrg = fopen(lcFilNamOrg, "rb") ;
+    lpFilOrg = jfopen(lcFilNamOrg, "rb") ;
   if ( lpFilOrg == NULL ) {
     fprintf(stddbg, "Could not open data file %s for reading.\n", lcFilNamOrg) ;
     exit(EXI_FRT);
@@ -388,21 +396,21 @@ int main(int aiArgCnt, char *acArg[])
   if ( strcmp(lcFilNamPch, std) == 0 )
     lpFilPch = stdin ;
   else
-    lpFilPch = fopen(lcFilNamPch, "rb") ;
+    lpFilPch = jfopen(lcFilNamPch, "rb") ;
   if ( lpFilPch == NULL ) {
     fprintf(stddbg, "Could not open patch file %s for reading.\n", lcFilNamPch) ;
-    fclose(lpFilOrg);
+    jfclose(lpFilOrg);
     exit(EXI_SCD);
   }
 
   if ( strcmp(lcFilNamOut, std) == 0 )
     lpFilOut = stdout ;
   else
-    lpFilOut = fopen(lcFilNamOut, "wb") ;
+    lpFilOut = jfopen(lcFilNamOut, "wb") ;
   if ( lpFilOut == NULL ) {
     fprintf(stddbg, "Could not open output file for writing.\n") ;
-    fclose(lpFilOrg) ;
-    fclose(lpFilPch) ;
+    jfclose(lpFilOrg) ;
+    jfclose(lpFilPch) ;
     exit(EXI_OUT);
   }
 
@@ -410,8 +418,8 @@ int main(int aiArgCnt, char *acArg[])
   jpatch(lpFilOrg, lpFilPch, lpFilOut);
 
   /* Close files */
-  fclose(lpFilOrg);
-  fclose(lpFilPch);
+  jfclose(lpFilOrg);
+  jfclose(lpFilPch);
 
   exit(0);
 }

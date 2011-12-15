@@ -128,13 +128,6 @@
 
 using namespace std ;
 
-#include "JDiff.h"
-#include "JOutBin.h"
-#include "JOutAsc.h"
-#include "JOutRgn.h"
-#include "JFile.h"
-
-
 #ifdef __MINGW32__
 #include "JFileAhead.h"
 #else
@@ -144,6 +137,13 @@ using namespace std ;
 #include "JFileIStream.h"
 #include "JFileIStreamAhead.h"
 #endif
+
+#include "JDefs.h"
+#include "JDiff.h"
+#include "JOutBin.h"
+#include "JOutAsc.h"
+#include "JOutRgn.h"
+#include "JFile.h"
 
 using namespace JojoDiff ;
 
@@ -250,7 +250,7 @@ int main(int aiArgCnt, char *acArg[])
     } else if (strcmp(acArg[liOptArgCnt], "-ff") == 0) {
         // No compare out-of-buffer and no backtracing
     	lbCmpAll = false ;
-        llBufSze = 64 * 1024 ;
+        llBufSze = 4096 * 1024 ;
         lbSrcBkt = true ;
         liSrcScn = 0 ;
         liMchMin = 4 ;
@@ -390,7 +390,7 @@ int main(int aiArgCnt, char *acArg[])
 
   /* Open first file */
 #ifdef __MINGW32__
-  lfFilOrg = fopen(lcFilNamOrg, "rb") ;
+  lfFilOrg = jfopen(lcFilNamOrg, "rb") ;
   if (lfFilOrg != NULL){
       lpFilOrg = new JFileAhead(lfFilOrg, "Org", llBufSze, liBlkSze);
   }
@@ -412,7 +412,7 @@ int main(int aiArgCnt, char *acArg[])
 
   /* Open second file */
 #ifdef __MINGW32__
-  lfFilNew = fopen(lcFilNamNew, "rb") ;
+  lfFilNew = jfopen(lcFilNamNew, "rb") ;
   if (lfFilNew != NULL){
       lpFilNew = new JFileAhead(lfFilNew, "New", llBufSze, liBlkSze);
   }
@@ -505,8 +505,8 @@ int main(int aiArgCnt, char *acArg[])
 	  delete liFilNew ;
   }
 #endif
-  if (lfFilOrg != NULL) fclose(lfFilOrg);
-  if (lfFilNew != NULL) fclose(lfFilNew);
+  if (lfFilOrg != NULL) jfclose(lfFilOrg);
+  if (lfFilNew != NULL) jfclose(lfFilNew);
 
 
   /* Exit */

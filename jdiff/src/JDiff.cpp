@@ -5,6 +5,8 @@
  *
  * Copyright (C) 2002-2011 Joris Heirbaut
  *
+ * This file is part of JojoDiff.
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -59,76 +61,6 @@
  * compare with between files).
  *
  * Method ufFndhdScn scans the left file and creates the hash table.
- *
- * Author                Version Date       Modification
- * --------------------- ------- -------    -----------------------
- * Joris Heirbaut        v0.0    10-06-2002 hashed compare
- * Joris Heirbaut                14-06-2002 full compare
- * Joris Heirbaut                17-06-2002 global positions
- * Joris Heirbaut        v0.1    18-06-2002 first well-working runs!!!
- * Joris Heirbaut                19-06-2002 compare in buffer before read position
- * Joris Heirbaut        v0.1    20-06-2002 optimized esc-sequences & lengths
- * Joris Heirbaut        v0.2    24-06-2002 running okay again
- * Joris Heirbaut        v0.2b   01-07-2002 bugfix on length=252
- * Joris Heirbaut        v0.2c   09-07-2002 bugfix on divide by zero in statistics
- * Joris Heirbaut        v0.3a   09-07-2002 hashtable hint only on samplerate
- * Joris Heirbaut          |     09-07-2002 exit code 1 if files are equal
- * Joris Heirbaut          |     12-07-2002 bugfix using ufFabPos in function call
- * Joris Heirbaut        v0.3a   16-07-2002 backtrack on original file
- * Joris Heirbaut        v0.4a   19-07-2002 prescan sourcefile
- * Joris Heirbaut          |     30-08-2002 bugfix in ufFabRst and ufFabPos
- * Joris Heirbaut          |     03-08-2002 bugfix for backtrack before start-of-file
- * Joris Heirbaut          |     09-09-2002 reimplemented filebuffer
- * Joris Heirbaut        v0.4a   10-09-2002 take best of multiple possibilities
- * Joris Heirbaut        v0.4b   11-09-2002 soft-reading from files
- * Joris Heirbaut          |     18-09-2002 moved ufFabCmp from ufFndAhdChk to ufFndAhdAdd/Bst
- * Joris Heirbaut          |     18-09-2002 ufFabOpt - optimize a found solution
- * Joris Heirbaut          |     10-10-2002 added Fab->izPosEof to correctly handle EOF condition
- * Joris Heirbaut        v0.4b   16-10-2002 replaces ufFabCmpBck and ufFabCmpFwd with ufFabFnd
- * Joris Heirbaut        v0.4c   04-11-2002 use ufHshFnd after prescanning
- * Joris Heirbaut          |     04-11-2002 no reset of matching table
- * Joris Heirbaut          |     21-12-2002 rewrite of matching table logic
- * Joris Heirbaut          |     24-12-2002 no compare in ufFndAhdAdd
- * Joris Heirbaut          |     02-01-2003 restart finding matches at regular intervals when no matches are found
- * Joris Heirbaut          |     09-01-2003 renamed ufFabBkt to ufFabSek, use it for DEL and BKT instructions
- * Joris Heirbaut        v0.4c   23-01-2003 distinguish between EOF en EOB
- * Joris Heirbaut        v0.5    27-02-2003 dropped "fast" hash method (it was slow!)
- * Joris Heirbaut          |     22-05-2003 started    rewrite of FAB-abstraction
- * Joris Heirbaut          |     30-06-2003 terminated rewrite ...
- * Joris Heirbaut          |     08-07-2003 correction in ufMchBst (llTstNxt = *alBstNew + 1 iso -1)
- * Joris Heirbaut        v0.5    02-09-2003 production
- * Joris Heirbaut        v0.6    29-04-2005 large-file support
- * Joris Heirbaut        v0.7    23-06-2009 differentiate between position 0 and notfound in ufMchBst
- * Joris Heirbaut          |     23-06-2009 optimize collission strategy using sample quality
- * Joris Heirbaut          |     24-06-2009 introduce quality of samples
- * Joris Heirbaut          |     26-06-2009 protect first samples
- * Joris Heirbaut        v0.7g   24-09-2009 use fseeko for cygwin largefiles
- * Joris Heirbaut          |     24-09-2009 removed casts to int from ufFndAhd
- * Joris Heirbaut        v0.7h   24-09-2009 faster ufFabGetNxt
- * Joris Heirbaut          |     24-09-2009 faster ufHshAdd: remove quality of hashes
- * Joris Heirbaut        v0.7i   25-09-2009 drop use of ufHshBitCnt
- * Joris Heirbaut        v0.7l   04-10-2009 increment glMchMaxDst as hashtable overloading grows
- * Joris Heirbaut          |     16-10-2009 finalization
- * Joris Heirbaut        v0.7m   17-10-2009 gprof optimization ufHshAdd
- * Joris Heirbaut        v0.7n   17-10-2009 gprof optimization ufFabGet
- * Joris Heirbaut        v0.7o   18-10-2009 gprof optimization asFab->iiRedSze
- * Joris Heirbaut        v0.7p   19-10-2009 ufHshAdd: check uniform distribution
- * Joris Heirbaut        v0.7q   23-10-2009 ufFabGet: scroll back on buffer
- * Joris Heirbaut          |     19-10-2009 ufFndAhd: liMax = giBufSze
- * Joris Heirbaut          |     25-10-2009 ufMchAdd: gliding matches
- * Joris Heirbaut          |     25-10-2009 ufOut: return true for faster EQL sequences in jdiff function
- * Joris Heirbaut        v0.7r   27-10-2009 ufMchBst: test position for gliding matches
- * Joris Heirbaut          |     27-10-2009 ufMchBst: remove double loop
- * Joris Heirbaut          |     27-10-2009 ufMchBst: double linked list ordered on azPosOrg
- * Joris Heirbaut          |     27-10-2009 ufFndAhd: look back on reset (liBck)
- * Joris Heirbaut          |     27-10-2009 ufFndAhd: reduce lookahead after giMchMin (speed optimization)
- * Joris Heirbaut        v0.7x   05-11-2009 ufMchAdd: hashed method
- * Joris Heirbaut        v0.7y   13-11-2009 ufMchBst: store unmatched samples too (reduce use of ufFabFnd)
- * Joris Heirbaut        v0.8    30-06-2011 C++ version
- * Joris Heirbaut        v0.8a   08-07-2011 Optimize position 0
- * Joris Heirbaut        v0.8b   02-09-2011 Switch order of ahead/backtrack/skip logic
- * Joris Heirbaut        v0.8.1  30-11-2011 Revert to use of fread/fseek (MinGW ifstream.gseek does not correctly handle files >2GB)
- * Joris Heirbaut        v0.8.1  30-11-2011 Throuw out exception handling for MinGW (trying to reduce exe size)
  *
  *******************************************************************************/
 #include "JDefs.h"
