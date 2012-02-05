@@ -33,6 +33,8 @@ namespace JojoDiff {
  */
 class JFile {
 public:
+	virtual ~JFile(){};
+
 	/**
 	 * Get byte at specified address. Auto-increments the address to the next byte.
 	 * Soft read ahead will return an EOB when reading out of the buffer.

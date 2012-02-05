@@ -31,6 +31,8 @@ namespace JojoDiff {
  */
 class JOut {
 public:
+	virtual ~JOut(){};
+
     /**
      * Abstract output routine for JDiff, called to output one byte.
      *
