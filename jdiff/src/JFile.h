@@ -52,6 +52,13 @@ public:
 	 * Return number of seek operations performed.
 	 */
 	virtual long seekcount() = 0;
+
+	/**
+	 * For buffered files, return the position of the buffer
+	 *
+	 * @return  -1=no buffering, > 0 : first position in buffer
+	 */
+	 virtual off_t getBufPos() = 0;
 };
 } /* namespace */
 #endif /* JFILE_H_ */

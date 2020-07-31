@@ -30,6 +30,12 @@
 
 #include <stdio.h>
 
+#define JDIFF_VERSION   "0.8.3 (beta) 2020"
+#define JDIFF_COPYRIGHT "Copyright (C) 2002-2020 Joris Heirbaut"
+
+#define XSTR(x) STR(x)
+#define STR(x) #x
+
 #ifdef _DEBUG
 #define debug           1       /* Include debug code */
 #else
@@ -43,7 +49,7 @@
  * MinGW still sticks to _FILE_OFFSET_BIT=32 by default.
  * I leave it to the Makefile (or compiler settings) to decide whether or not to enable 64-bit file support.
  */
-// If _FILE_OFFSET_BITS works correctly, following should be enough:
+// If _FILE_OFFSET_BITS works correctly, following should be right:
 #define off_t    off_t
 #define jfopen   fopen
 #define jfclose  fclose
@@ -54,19 +60,25 @@
 #if _FILE_OFFSET_BIT == 64
 #define JDIFF_LARGEFILE
 #endif
+#ifdef _LARGEFILE64_SOURCE
+#define JDIFF_LARGEFILE
+#endif
 
 // Normal definition
 #define PRIzd "zd"
 
-// MINGW may use ms windows printf that does not recognise %zd
-#if __MINGW_PRINTF_FORMAT == ms_printf
+// MINGW uses ms windows printf that does not recognise %zd
+// unless -D_GNU_SOURCE has been specified
+#ifndef _GNU_SOURCE
+#ifdef __MINGW32__ // #if __MINGW_PRINTF_FORMAT == ms_printf doen't work
     #undef PRIzd
-    #if _FILE_OFFSET_BIT == 64
+    #if _FILE_OFFSET_BITS == 64
         #define PRIzd "I64d"  // ms_printf doesn't know about %lld nor %zd
     #else
         #define PRIzd "ld"
-    #endif // _FILE_OFFSET_BIT
+    #endif // _FILE_OFFSET_BITS
 #endif // __MINGW_PRINTF_FORMAT
+#endif // _GNU_SOURCE
 
 // Old:
 //#if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
@@ -112,11 +124,7 @@
 /*
  * Global definitions
  */
-#define JDIFF_VERSION   "0.8.3 (beta) 2020"
-#define JDIFF_COPYRIGHT "Copyright (C) 2002-2020 Joris Heirbaut"
-
 #define uchar unsigned char
-//#define ulong unsigned long int         // unsigned long
 #define null  NULL
 
 #ifdef _LARGESAMPLE

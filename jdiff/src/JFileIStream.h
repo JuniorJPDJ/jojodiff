@@ -58,6 +58,15 @@ public:
      */
     long seekcount();
 
+     /**
+	 * For buffered files, return the position of the buffer
+	 * JFileIStream does not buffer so returns -1
+	 *
+	 * @return  -1=no buffering, > 0 : first position in buffer
+	 */
+	off_t getBufPos();
+
+
 private:
 	/* Context */
     istream *mpStream;      /* file handle                                  */

@@ -106,16 +106,16 @@ private:
 	 * Matchtable elements
 	 */
 	typedef struct tMch {
-	    struct tMch *ipNxt ;   /* next element in collision list */
+	    struct tMch *ipNxt ;    /* next element in collision list */
 
-	    int iiCnt ;         // number of colliding matches
-	    int iiTyp ;         // type of match:  0=unknown, 1=colliding, -1=gliding
-	    off_t izBeg ;       // first found match (new file position)
-	    off_t izNew ;       // last  found match (new file position)
-	    off_t izOrg ;       // last  found match (org file position)
-	    off_t izDlt ;       // delta: izOrg = izNew + izDlt
+	    int iiCnt ;             // number of colliding matches (= confirming matches)
+	    int iiTyp ;             // type of match:  0=unknown, 1=colliding, -1=gliding
+	    off_t izBeg ;           // first found match (new file position)
+	    off_t izNew ;           // last  found match (new file position)
+	    off_t izOrg ;           // last  found match (org file position)
+	    off_t izDlt ;           // delta: izOrg = izNew + izDlt
 
-        // int iiCmp ;         // compare status: 0=equal, 1=maybe equal, 2=not equal, 7=unverified unequal
+        // int iiCmp ;          // compare status: 0=equal, 1=maybe equal, 2=not equal, 7=unverified unequal
 	} rMch ;
 
 	rMch *msMch ;               /* table of matches */

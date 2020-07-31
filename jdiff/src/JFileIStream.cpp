@@ -40,6 +40,15 @@ JFileIStream::~JFileIStream() {
 long JFileIStream::seekcount(){return mlFabSek; }
 
 /**
+ * For buffered files, return the position of the buffer
+ * JFileIStream does not buffer, so return -1
+ * @return  -1=no buffering, > 0 : first position in buffer
+ */
+off_t JFileIStream::getBufPos() {
+    return -1;
+};
+
+/**
  * Gets one byte from the lookahead file.
  */
 int JFileIStream:: get (

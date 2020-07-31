@@ -49,8 +49,8 @@
 #ifdef _LARGEFILE64_SOURCE
 #warning _LARGEFILE64_SOURCE set
 #endif
-#ifdef JDIFF_LARGEFILE
-#warning JDIFF_LARGEFILE set
+#ifndef JDIFF_LARGEFILE
+#warning JDIFF_LARGEFILE not set, file >2GB not supported !
 #endif
 
 

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <exception>
 
+#include "JDefs.h"
 #include "JFileIStreamAhead.h"
 #include "JDebug.h"
 
@@ -57,7 +58,7 @@ JFileIStreamAhead::JFileIStreamAhead(istream * apFil, const char *asFid, const l
         fprintf(JDebug::stddbg, "ufFabOpn(%s):(buf=%p,max=%p,sze=%ld)\n",
                 asFid, mpBuf, mpMax, mlBufSze);
 #endif
-    }
+}
 
 JFileIStreamAhead::~JFileIStreamAhead() {
 	if (mpBuf != null) free(mpBuf) ;
@@ -67,6 +68,15 @@ JFileIStreamAhead::~JFileIStreamAhead() {
  * Return number of seeks performed.
  */
 long JFileIStreamAhead::seekcount(){return mlFabSek; }
+
+/**
+ * For buffered files, return the position of the buffer
+ *
+ * @return  -1=no buffering, > 0 : first position in buffer
+ */
+off_t JFileIStreamAhead::getBufPos(){
+    return mzPosInp - miBufUsd ;
+}
 
 /**
  * Gets one byte from the lookahead file.
@@ -92,7 +102,6 @@ int JFileIStreamAhead::get (
 /**
  * Retrieves requested position into the buffer, trying to keep the buffer as
  * large as possible (i.e. invalidating/overwriting as less as possible).
- * Calls get_frombuffer afterwards to get the data from the buffer.
  *
  * @param azPos     position to read from
  * @param aiTyp     0=read, 1=hard ahead, 2=soft ahead
@@ -165,8 +174,8 @@ int JFileIStreamAhead::get_frombuffer (
 	    liSek=1;
 	}
 
-	/* Soft ahead: continue only if no seek */
-	if (aiTyp == 2 && liSek != 0)  {
+	/* Soft ahead: seek or cycling the buffer is not allowed */
+	if (aiTyp == 2 && (liSek != 0 || (miBufUsd + miBlkSze > mlBufSze)))  {
 		#if debug
 		if (JDebug::gbDbg[DBGRED])
 		  fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOB.\n",
@@ -195,9 +204,9 @@ int JFileIStreamAhead::get_outofbuffer (
     switch (aiSek) {
         case (0):
             /* How many bytes can we read ? */
-            liTdo = mpMax - mpInp ;
-            if (liTdo > miBlkSze) liTdo = miBlkSze ;
-            lpInp = mpInp ;
+            liTdo = mpMax - mpInp ;     // calculate max bytes we can read
+            if (liTdo > miBlkSze) liTdo = miBlkSze ;  // reduce to blocksize
+            lpInp = mpInp ;             // set new physical read position
             lzPos = mzPosInp ;
             break ;
 
@@ -219,7 +228,7 @@ int JFileIStreamAhead::get_outofbuffer (
 
         case (2):
             /* make room in buffer */
-            liTdo = miBufUsd + miBlkSze - mlBufSze ; // number of bytes to remove in order to have room for giBlkSze
+            liTdo = miBufUsd + miBlkSze - mlBufSze ; // number of bytes to remove in order to have room for miBlkSze
             if (liTdo > 0){
                 miBufUsd -= liTdo ;
                 mzPosInp -= liTdo ;
@@ -264,6 +273,13 @@ int JFileIStreamAhead::get_outofbuffer (
             mzPosRed = -1;
             miRedSze = 0 ;
             break ;
+
+        default:
+            // TODO: make aiSek an enum to get rid of uninitialized warning.
+            // In the meantime, place following code that will never be executed.
+            lpInp = mpInp;
+            liTdo = 0 ;
+            lzPos = 0 ;
     } /* switch aiSek */
 
     if (aiSek != 0) {
@@ -275,7 +291,7 @@ int JFileIStreamAhead::get_outofbuffer (
         mpStream->seekg(lzPos) ; // throws an exception in case of error
     } /* if liSek */
 
-    /* Read a chunk of data (in 16 kbyte blocks) */
+    /* Read a block of data (miBlkSze) */
     mpStream->read((char *)lpInp, liTdo) ;
     liDne = mpStream->gcount();
     if (liDne < liTdo) {
@@ -301,6 +317,7 @@ int JFileIStreamAhead::get_outofbuffer (
 
     switch (aiSek){
         case (2):
+            // Handle scroll-back
             if (liDne < liTdo){
                 /* repair buffer */
                 mpInp = lpInp + liDne;
@@ -322,6 +339,7 @@ int JFileIStreamAhead::get_outofbuffer (
             /* Advance input position */
             mzPosInp += liDne ;
             mpInp    += liDne ;
+            // Cycle buffer
             if ( mpInp == mpMax ){
               mpInp = mpBuf ;
             } else if ( mpInp > mpMax ) {

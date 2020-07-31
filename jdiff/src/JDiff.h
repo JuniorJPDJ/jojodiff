@@ -218,7 +218,7 @@ private:
     const bool mbCmpAll ;   /* Compare all matches, even if data not in buffer? */
     int  miSrcScn;          /* Prescan original file: 0=no, 1=yes, 2=done */
 
-    /* State */
+    /* Search-ahead state */
 	off_t mzAhdOrg;        // Current ahead position on original file
 	off_t mzAhdNew;        // Current ahead position on new file
 	hkey mlHshOrg;         // Current hash value for original file

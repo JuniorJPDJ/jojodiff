@@ -261,8 +261,9 @@ int JFileAhead::get_outofbuffer (
             break ;
 
         default:
-            // TODO make aiSek an enum
-            // To get rid of uninitialized warning
+            // TODO: make aiSek an enum to get rid of uninitialized warning.
+            // In the meantime, place following code that will never be executed.
+            lpInp = mpInp;
             liTdo = 0 ;
             lzPos = 0 ;
     } /* switch aiSek */

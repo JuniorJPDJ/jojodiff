@@ -53,6 +53,13 @@ public:
      */
     long seekcount();
 
+    /**
+	 * For buffered files, return the position of the buffer
+	 *
+	 * @return  -1=no buffering, > 0 : first position in buffer
+	 */
+	off_t getBufPos();
+
 private:
     /**
      * Tries to get data from the buffer. Calls get_outofbuffer if that is not possible.
@@ -88,10 +95,10 @@ private:
 
     /* Settings */
     long mlBufSze;      /* File lookahead buffer size                   */
-    int miBlkSze;       /* Read file in blocks of 4096 bytes            */
+    int miBlkSze;       /* Block size: read from file in blocks         */
 
     /* Buffer state */
-    long miRedSze;      /* distance between izPosRed to izPosInp        */
+    long miRedSze;      /* distance between izPosRed and izPosInp       */
     long miBufUsd;      /* number of bytes used in buffer               */
     uchar *mpBuf;       /* read-ahead buffer                            */
     uchar *mpMax;       /* read-ahead buffer end                        */

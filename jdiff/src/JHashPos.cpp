@@ -34,37 +34,53 @@ const int COLLISION_THRESHOLD = 4 ; /* override when collision counter exceeds t
 const int COLLISION_HIGH = 4 ;      /* rate at which high quality samples should override */
 const int COLLISION_LOW = 1 ;       /* rate at which low quality samples should override  */
 
-/* List of primes we select from when size is specified on commandline */
+/* List of primes we select from when size is specified on commandline
 const int giPme[24] = { 2147483647, 1073741789, 536870909,  268435399,
                          134217689,   67108859,  33554393,   16777213,
                            8388593,    4194301,   2097143,    1048573,
                             524287,     262139,    131071,      65521,
                              32749,      16381,      8191,       4093,
-                              2039,       1021,       509,        251} ;
+                              2039,       1021,       509,        251} ;*/
 
 /**
-  * Create a new hash-table with size not larger that the given size.
+* Check if number is a prime number.
+* @param   number     Number to check
+* @return  true = a prime, false = not a prime
+*/
+bool isPrime(int number){
+    if(number < 2) return 0;
+    if(number == 2) return 1;
+    if(number % 2 == 0) return 0;
+    for(int  i=3; number/i >= i; i+=2){
+        if(number % i == 0 ) return false;
+    }
+    return true;
+}
+
+/**
+  * Create a new hash-table with size (number of elements) not larger that the given size.
   *
   * Actual size will be based on the highest prime below the highest power of 2
   * lower or equal to the specified size, e.g. aiSze=8192 will create a hashtable
   * of 8191 elements.
   *
+  * One element may be 4, 6 or 8 bytes.
+  *
   * @param aiSze   size, in number of elements.
   */
 JHashPos::JHashPos(int aiSze)
 :  miHshColMax(COLLISION_THRESHOLD), miHshColCnt(COLLISION_THRESHOLD),
-   miHshRlb(48), miLodCnt(0), miHshHit(0)
+   miHshRlb(SMPSZE + SMPSZE / 2), miLodCnt(0), miHshHit(0)
 {   /* get largest prime < aiSze */
-    int liSzeIdx=0;
-    for (; liSzeIdx < (int) (sizeof(giPme)/sizeof(int)) && giPme[liSzeIdx] > aiSze; liSzeIdx++) {
-            /* empty block to avoid gcc warning */
-    };
+    int liSzeIdx=aiSze / (sizeof(hkey)+sizeof(off_t));      // convert Mb to number of elements
+    for (; ! isPrime(liSzeIdx); liSzeIdx--) ;               // find nearest lower prime
 
     /* allocate hashtable */
-    miHshPme = giPme[liSzeIdx];
-    miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));
-    mzHshTblPos = (off_t *) malloc(miHshSze) ;
-    mkHshTblHsh = (hkey *) &mzHshTblPos[miHshPme] ;
+    miHshPme = liSzeIdx ;                                   // keep for refernce
+    miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));   // reconvert to bytes
+    mzHshTblPos = (off_t *) calloc(miHshPme,                // allocate and initialize
+                        sizeof(off_t) + sizeof(hkey)) ;
+    mkHshTblHsh = (hkey *) &mzHshTblPos[miHshPme] ;         // set address of hashes
 
     #if debug
       if (JDebug::gbDbg[DBGHSH])
@@ -80,7 +96,7 @@ JHashPos::JHashPos(int aiSze)
     #endif
 
     /* initialize hashtable */
-    memset(mzHshTblPos, 0, miHshSze);
+    //@083 memset(mzHshTblPos, 0, miHshSze); // done by calloc
 }
 
 /*
@@ -226,4 +242,5 @@ void JHashPos::dist(off_t azMax, int aiBck){
         fprintf(JDebug::stddbg, "Hash Dist Load           = %d/%d=%d\n", liSum, miHshPme, liSum * 100 / miHshPme);
     }
 } /* JHasPos::dist */
-}
+
+} /* namespace jojodiff */
