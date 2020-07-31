@@ -165,7 +165,7 @@ int JMatchTable::add (
 
         #if debug
         if (JDebug::gbDbg[DBGMCH])
-          fprintf(JDebug::stddbg, "Mch Add ("P8zd","P8zd") New ("P8zd","P8zd") Bse (%"PRIzd")\n",
+          fprintf(JDebug::stddbg, "Mch Add ("P8zd","P8zd") New ("P8zd","P8zd") Bse (%" PRIzd ")\n",
                   azFndOrgAdd, azFndNewAdd, lpCur->izOrg, lpCur->izNew, azBseNew) ;
         #endif
 
@@ -301,7 +301,7 @@ bool JMatchTable::get (
                 /* show table */
                 #if debug
                 if (JDebug::gbDbg[DBGMCH])
-                    fprintf(JDebug::stddbg, "Mch %1d%c[%c"P8zd","P8zd","P8zd",%4d]"P8zd":%"PRIzd":%d\n",
+                    fprintf(JDebug::stddbg, "Mch %1d%c[%c"P8zd","P8zd","P8zd",%4d]"P8zd":%" PRIzd ":%d\n",
                             liCurCmp,
                             (lpBst == lpCur)?'*': (liCurCmp == 0)?'=': (liCurCmp==1)?'?':':',
                                             (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
@@ -313,7 +313,7 @@ bool JMatchTable::get (
                 #if debug
                 if (JDebug::gbDbg[DBGMCH])
                     if ((lpCur->iiCnt > 0) && (lpCur->izBeg > 0))
-                        fprintf(JDebug::stddbg, "Mch  :[%c"P8zd","P8zd","P8zd",%4d] D=%"PRIzd"\n",
+                        fprintf(JDebug::stddbg, "Mch  :[%c"P8zd","P8zd","P8zd",%4d] D=%" PRIzd "\n",
                                 (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
                                         lpCur->izOrg, lpCur->izNew, lpCur->izBeg, lpCur->iiCnt,
                                         lpCur->izDlt) ;

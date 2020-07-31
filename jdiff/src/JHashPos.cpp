@@ -35,7 +35,7 @@ const int COLLISION_HIGH = 4 ;      /* rate at which high quality samples should
 const int COLLISION_LOW = 1 ;       /* rate at which low quality samples should override  */
 
 /* List of primes we select from when size is specified on commandline */
-const int giPme[20] = { /* 2147483647, 1073741789, 536870909,  268435399, */
+const int giPme[24] = { 2147483647, 1073741789, 536870909,  268435399,
                          134217689,   67108859,  33554393,   16777213,
                            8388593,    4194301,   2097143,    1048573,
                             524287,     262139,    131071,      65521,
@@ -54,28 +54,33 @@ const int giPme[20] = { /* 2147483647, 1073741789, 536870909,  268435399, */
 JHashPos::JHashPos(int aiSze)
 :  miHshColMax(COLLISION_THRESHOLD), miHshColCnt(COLLISION_THRESHOLD),
    miHshRlb(48), miLodCnt(0), miHshHit(0)
-{
+{   /* get largest prime < aiSze */
     int liSzeIdx=0;
-    for (; liSzeIdx < 19 && giPme[liSzeIdx] > aiSze; liSzeIdx++) ;
+    for (; liSzeIdx < (int) (sizeof(giPme)/sizeof(int)) && giPme[liSzeIdx] > aiSze; liSzeIdx++) {
+            /* empty block to avoid gcc warning */
+    };
 
-	miHshPme = giPme[liSzeIdx];
-	miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));
-	mzHshTblPos = (off_t *) malloc(miHshSze) ;
-	mkHshTblHsh = (hkey *) &mzHshTblPos[miHshPme] ;
+    /* allocate hashtable */
+    miHshPme = giPme[liSzeIdx];
+    miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));
+    mzHshTblPos = (off_t *) malloc(miHshSze) ;
+    mkHshTblHsh = (hkey *) &mzHshTblPos[miHshPme] ;
 
-#if debug
-	if (JDebug::gbDbg[DBGHSH])
-		fprintf(JDebug::stddbg, "Hash Ini sizeof=%2d+%2d=%2d, %d samples, %d bytes, address=%p-%p,%p-%p.\n",
-				sizeof(hkey), sizeof(off_t), sizeof(hkey) + sizeof(off_t),
-				miHshPme, miHshSze,
-				mzHshTblPos, &mzHshTblPos[miHshPme], mkHshTblHsh, &mkHshTblHsh[miHshPme]) ;
-#endif
-#ifndef __MINGW32__
-	if ( mzHshTblPos == null ) {
-	    throw bad_alloc() ;
-	}
-#endif
-	memset(mzHshTblPos, 0, miHshSze);
+    #if debug
+      if (JDebug::gbDbg[DBGHSH])
+        fprintf(JDebug::stddbg, "Hash Ini sizeof=%2d+%2d=%2d, %d samples, %d bytes, address=%p-%p,%p-%p.\n",
+            sizeof(hkey), sizeof(off_t), sizeof(hkey) + sizeof(off_t),
+            miHshPme, miHshSze,
+            mzHshTblPos, &mzHshTblPos[miHshPme], mkHshTblHsh, &mkHshTblHsh[miHshPme]) ;
+    #endif
+    #ifndef __MINGW32__
+      if ( mzHshTblPos == null ) {
+          throw bad_alloc() ;
+      }
+    #endif
+
+    /* initialize hashtable */
+    memset(mzHshTblPos, 0, miHshSze);
 }
 
 /*
@@ -165,7 +170,7 @@ void JHashPos::print(){
 
     for (liHshIdx = 0; liHshIdx < miHshPme; liHshIdx ++)  {
         if (mzHshTblPos[liHshIdx] != 0) {
-            fprintf(JDebug::stddbg, "Hash Pnt %12d "P8zd"-%08"PRIhkey"x\n", liHshIdx,
+            fprintf(JDebug::stddbg, "Hash Pnt %12d " P8zd "-%08" PRIhkey "x\n", liHshIdx,
                     mzHshTblPos[liHshIdx], mkHshTblHsh[liHshIdx]) ;
         }
     }

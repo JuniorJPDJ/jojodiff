@@ -25,15 +25,15 @@
  *   -vv         Verbose (debug info).
  *   -h          Help (this text).
  *   -l          Listing (ascii output).
- *   -lr         Regions (ascii output).
+ *   -r          Regions (ascii output).
  *   -b          Try to be better (using more memory).
  *   -f          Try to be faster: no out of buffer compares.
  *   -ff         Try to be faster: no out of buffer compares, nor pre-scanning.
  *   -m size     Size (in kB) for look-ahead buffers (default 128).
- *   -bs size    Block size (in bytes) for reading from files (default 4096).
+ *   -k size     Block size (in bytes) for reading from files (default 4096).
  *   -s size     Number of samples per file (e.g. 8192).
- *   -min count  Minimum number of solutions to find before choosing one.
- *   -max count  Maximum number of solutions to find before choosing one.
+ *   -n count    Minimum number of solutions to find before choosing one.
+ *   -x count    Maximum number of solutions to find before choosing one.
  *
  * Exit codes
  * ----------
@@ -48,7 +48,7 @@
  *  8  error on reading
  *  9  error on writing
  *  10  error: malloc failed
- *  20  error: spurious errors
+ *  20  error: any other error
  *
  * Author                Version Date       Modification
  * --------------------- ------- -------    -----------------------
@@ -114,6 +114,12 @@
  * Joris Heirbaut          |     27-10-2009 ufFndAhd: reduce lookahead after giMchMin (speed optimization)
  * Joris Heirbaut        v0.7x   05-11-2009 ufMchAdd: hashed method
  * Joris Heirbaut        v0.7y   13-11-2009 ufMchBst: store unmatched samples too (reduce use of ufFabFnd)
+ * Joris Heirbaut        v0.8    Sep  2011  Conversion to C++
+ * Joris Heirbaut        v0.8.1  Dec  2011  Correction in Windows exe for files > 2GB
+ * Joris Heirbaut        v0.8.2  Dec  2015  use jfopen/jfclose/jfread/jfseek to avoid interferences with LARGEFILE redefinitions
+ * Joris Heirbaut          |     Feb  2015  bugfix: virtual destructors for JFile and JOut to avoid memory leaks
+ * Joris Heirbaut        v0.8.3  July 2020  improved progress feedback
+ *                                          use getopts_long for option processing
  *
  *******************************************************************************/
 
@@ -125,6 +131,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <inttypes.h>
+#include <getopt.h>
 
 using namespace std ;
 
@@ -147,40 +154,196 @@ using namespace std ;
 
 using namespace JojoDiff ;
 
-/*******************************************************************************
+/*********************************************************************************
+* Options parsing
+*********************************************************************************/
+const char *gcOptSht = "a:bcd:fhi:k:lm:n:pqrvx:"; /* u:: for optional aruments */
+
+struct option gsOptLng [] = {
+        {"better",            no_argument,      NULL,'b'},
+        {"faster",            no_argument,      NULL,'f'},
+        {"console",           no_argument,      NULL,'c'},
+        {"debug",             required_argument,NULL,'d'},
+        {"help",              no_argument,      NULL,'h'},
+        {"listing",           no_argument,      NULL,'l'},
+        {"regions",           no_argument,      NULL,'r'},
+        {"sequential-source", no_argument,      NULL,'p'},
+        {"sequential-dest",   no_argument,      NULL,'q'},
+        {"index-size",        required_argument,NULL,'i'},
+        {"block-size",        required_argument,NULL,'k'},
+        {"buffer-size",       required_argument,NULL,'m'},
+        {"search-size",       required_argument,NULL,'a'},
+        {"search-min",        required_argument,NULL,'n'},
+        {"search-max",        required_argument,NULL,'x'},
+        {"verbose",           no_argument,      NULL,'v'},
+//      {"log-summary",       optional_argument,NULL,'u'},
+        {NULL,0,NULL,0}
+};
+
+/************************************************************************************
 * Main function
-*******************************************************************************/
+*************************************************************************************/
 int main(int aiArgCnt, char *acArg[])
 {
-  const char *lcFilNamOrg;
-  const char *lcFilNamNew;
-  const char *lcFilNamOut;
+  const char *lcFilNamOrg;      /* Source filename                                  */
+  const char *lcFilNamNew;      /* Destination filename                             */
+  const char *lcFilNamOut;      /* Output filename (-=stdout)                       */
 
-  FILE  *lpFilOut;
-
-  int liOptArgCnt=0 ;
-  int lbOptArgDne=false ;
-  char lcHlp='\0';
+  FILE  *lpFilOut;              /* Output file                                      */
 
   /* Default settings */
-  int liOutTyp = 0 ;            /* 0 = JOutBin, 1 = JOutAsc, 2 = JOutRgn */
-  int liVerbse = 0;             /* Verbose level 0=no, 1=normal, 2=high            */
-  int lbSrcBkt = true;          /* Backtrace on sourcefile allowed?                */
-  bool lbCmpAll = true ;        /* Compare even if data not in buffer?             */
-  int liSrcScn = 1 ;            /* Prescan source file: 0=no, 1=do, 2=done         */
-  int liMchMax = 32 ;           /* Maximum entries in matching table.              */
-  int liMchMin = 8 ;            /* Minimum entries in matching table.              */
-  int liHshMbt = 8 ; 	        /* Hashtable size in mega-samples (default 8 * 1024 * 1024) */
-  long llBufSze = 256*1024 ;    /* Default file-buffers size */
-  int liBlkSze = 4096 ;         /* Default block size */
-  int liAhdMax = 0;             /* Lookahead range (0=same as llBufSze) */
+  int liOutTyp = 0 ;            /* 0 = JOutBin, 1 = JOutAsc, 2 = JOutRgn            */
+  int liVerbse = 0;             /* Verbose level 0=no, 1=normal, 2=high             */
+  int lbSrcBkt = true;          /* Backtrace on sourcefile allowed?                 */
+  bool lbCmpAll = true ;        /* Compare even if data not in buffer?              */
+  int liSrcScn = 1 ;            /* Prescan source file: 0=no, 1=do, 2=done          */
+  int liMchMax = 32 ;           /* Maximum entries in matching table.               */
+  int liMchMin = 8 ;            /* Minimum entries in matching table.               */
+  int liHshMbt = 8 ;            /* Hashtable size in mega-samples (* 1024 * 1024)   */
+  long llBufSze = 1024*1024 ;   /* Default file-buffers size (in bytes)             */
+  int liBlkSze = 8192 ;         /* Default block size (in bytes)                    */
+  int liAhdMax = 0;             /* Lookahead range (0=same as llBufSze)             */
+  int liHlp=0;                  /* -h/--help flag: 0=no, 1=-h, 2=-hh, 3=error       */
 
-  JDebug::stddbg        = stderr ;
+  JDebug::stddbg = stderr ;     /* Debug and informational (verbose) output         */
+
+  /* optional arguments parsing */
+  int liOptArgCnt=0 ;           /* number of options */
+  char lcOptSht;                /* short option code */
+  int liOptLng;                 /* long option index */
+
+  /* TODO: create options
+    -p for sequential source: no indexing nor out-of-buffer reads for source file, pipe or stdin allowed
+    -q for sequential destination: no out-of-buffer reads for destination file, pipe or stdin allowed
+    ==> drop lbCmpAll and lbSrcBkt, replace by lbSeqOrg, lbSeqNew
+
+    Use standard getopt with long options.
+    */
 
   /* Read options */
-  while (! lbOptArgDne && (aiArgCnt-1 > liOptArgCnt)) {
+  /* parse option-switches */
+  while((lcOptSht = getopt_long(aiArgCnt, acArg, gcOptSht, gsOptLng, &liOptLng))!=EOF){
+    switch(lcOptSht){
+    case 'b': // try-harder: increase hashtable size and more searching
+        lbCmpAll = true ;         // verify all hashtable matches
+        llBufSze = 4096 * 1024 ;  // larger buffer (more soft-ahead searching)
+        lbSrcBkt = true;          // allow going back on source file
+        liSrcScn = 1 ;            // create full index on source file
+        liMchMin = 16 ;           // search at least 16 matches (go out of buffer if needed)
+        liMchMax = MCH_MAX ;      // maximum buffered search
+        liHshMbt = 32 ;           // +/-32meg elements
+        break;
+    case 'f': // faster
+        if (lbCmpAll){
+            lbCmpAll = false ;      // No compares out-of-buffer (only verify hashtable matches when data is available in memory buffers)
+            llBufSze = 64 * 1024 ;
+            lbSrcBkt = true ;
+            liSrcScn = 1  ;
+            liMchMin = 8 ;
+            liMchMax = 16 ;
+            liHshMbt = 8 ;          // 8Meg samples
+        } else {
+            // even faster
+            lbCmpAll = false ;      // No compares out-of-buffer
+            llBufSze = 4096 * 1024; // increase buffer size to have more lookahead indexing
+            lbSrcBkt = true ;
+            liSrcScn = 0 ;          // No indexing scan, indexing is limited ookahead search
+            liMchMin = 4 ;
+            liMchMax = MCH_MAX ;    // Increase buffered lookahead to its maximum
+            liHshMbt = 4 ;          // 4Meg samples
+        }
+        break;
+    case 'p': // sequential source file
+        lbCmpAll=false ;            // only compare data within the buffer
+        lbSrcBkt=false ;            // only advance on source file
+        liSrcScn=0;                 // no pre-scan indexing
+        liMchMin=0;                 // do not search out of buffer
+        break;
+    case 'q': // sequential destination file
+        lbCmpAll=false ;            // only compare data within the buffer
+        liMchMin=0;                 // do not search out of buffer
+        break;
+    case 'c': // verbose-stdout
+        JDebug::stddbg = stdout;
+        break;
+    case 'h': // help
+        liHlp++;
+        break;
+    case 'v': // "verbose",           no_argument
+        liVerbse++;
+        break;
+    case 'l': // "list-details",      no_argument
+        liOutTyp = 1 ;
+        break;
+    case 'r': // "list-groups",       no_argument
+        liOutTyp = 2 ;
+        break;
+    case 'a': // search-ahead-size
+        liAhdMax = atoi(optarg) / 2 * 1024 ;
+        break;
+    case 'i': // index-size
+        liHshMbt = atoi(acArg[liOptArgCnt]) ;
+        while (liHshMbt > 1024) liHshMbt /= 1024 ;
+        break;
+    case 'k': // "block-size"
+        liBlkSze = atoi(optarg) ;
+        break;
+    case 'm': // "buffer-size",       required_argument
+        llBufSze = atoi(optarg) / 2 * 1024;
+        break;
+    case 'n': // "search-min",        required_argument
+        liMchMin = atoi(optarg) ;
+        if (liMchMin > MCH_MAX)
+          liMchMin = MCH_MAX ;
+        break;
+    case 'x': // "search-max",        required_argument
+        liMchMax = atoi(optarg) ;
+        if (liMchMax > MCH_MAX)
+          liMchMax = MCH_MAX ;
+        break;
+
+    #if debug
+    case 'd': // debug
+        if (strcmp(optarg, "-dhsh") == 0) {
+          JDebug::gbDbg[DBGHSH] = true ;
+        } else if (strcmp(optarg, "-dahd") == 0) {
+          JDebug::gbDbg[DBGAHD] = true ;
+        } else if (strcmp(optarg, "-dcmp") == 0) {
+          JDebug::gbDbg[DBGCMP] = true ;
+        } else if (strcmp(optarg, "-dprg") == 0) {
+          JDebug::gbDbg[DBGPRG] = true ;
+        } else if (strcmp(optarg, "-dbuf") == 0) {
+          JDebug::gbDbg[DBGBUF] = true ;
+        } else if (strcmp(optarg, "-dhsk") == 0) {
+          JDebug::gbDbg[DBGHSK] = true ;
+        } else if (strcmp(optarg, "-dahh") == 0) {
+          JDebug::gbDbg[DBGAHH] = true ;
+        } else if (strcmp(optarg, "-dbkt") == 0) {
+          JDebug::gbDbg[DBGBKT] = true ;
+        } else if (strcmp(optarg, "-dred") == 0) {
+          JDebug::gbDbg[DBGRED] = true ;
+        } else if (strcmp(optarg, "-dmch") == 0) {
+          JDebug::gbDbg[DBGMCH] = true ;
+        } else if (strcmp(optarg, "-ddst") == 0) {
+          JDebug::gbDbg[DBGDST] = true ;
+        }
+        break ;
+    #endif
+    default:
+        liHlp=1;
+    }
+  }
+  liOptArgCnt=optind-1;
+
+//  int lbOptArgDne=false ;
+  /*while (! lbOptArgDne && (aiArgCnt-1 > liOptArgCnt)) {
     liOptArgCnt++ ;
-    if (strcmp(acArg[liOptArgCnt], "-v") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-ff") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-p") == 0) {
+
+    } else if (strcmp(acArg[liOptArgCnt], "-0") == 0) {
+        lbSrcBkt = false ;
+    } else if (strcmp(acArg[liOptArgCnt], "-v") == 0) {
       liVerbse = 1;
     } else if (strcmp(acArg[liOptArgCnt], "-vv") == 0) {
       liVerbse = 2;
@@ -192,32 +355,32 @@ int main(int aiArgCnt, char *acArg[])
     } else if (strcmp(acArg[liOptArgCnt], "-a") == 0) {
         liOptArgCnt ++;
         if (aiArgCnt > liOptArgCnt) {
-          liAhdMax = atoi(acArg[liOptArgCnt]) / 2 * 1024;
+          liAhdMax = atoi(acArg[liOptArgCnt]) / 2 * 1024 ;
         }
     } else if (strcmp(acArg[liOptArgCnt], "-m") == 0) {
         liOptArgCnt ++;
         if (aiArgCnt > liOptArgCnt) {
           llBufSze = atoi(acArg[liOptArgCnt]) / 2 * 1024;
         }
-    } else if (strcmp(acArg[liOptArgCnt], "-bs") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-b") == 0) {
         liOptArgCnt ++;
         if (aiArgCnt > liOptArgCnt) {
         	liBlkSze = atoi(acArg[liOptArgCnt]) ;
         }
-    } else if (strcmp(acArg[liOptArgCnt], "-s") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-i") == 0) {
         liOptArgCnt++;
         if (aiArgCnt > liOptArgCnt) {
         	liHshMbt = atoi(acArg[liOptArgCnt]) ;
         	while (liHshMbt > 1024) liHshMbt /= 1024 ;
         }
-    } else if (strcmp(acArg[liOptArgCnt], "-min") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-n") == 0) {
         liOptArgCnt++;
         if (aiArgCnt > liOptArgCnt) {
           liMchMin = atoi(acArg[liOptArgCnt]) ;
           if (liMchMin > MCH_MAX)
               liMchMin = MCH_MAX ;
         }
-    } else if (strcmp(acArg[liOptArgCnt], "-max") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-x") == 0) {
         liOptArgCnt++;
         if (aiArgCnt > liOptArgCnt) {
           liMchMax = atoi(acArg[liOptArgCnt]) ;
@@ -227,36 +390,9 @@ int main(int aiArgCnt, char *acArg[])
 
     } else if (strcmp(acArg[liOptArgCnt], "-l") == 0) {
         liOutTyp = 1 ;
-    } else if (strcmp(acArg[liOptArgCnt], "-lr") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-r") == 0) {
         liOutTyp = 2 ;
-    } else if (strcmp(acArg[liOptArgCnt], "-b") == 0) {
-        // Larger hashtables
-    	lbCmpAll = true ;
-        llBufSze = 4096 * 1024 ;
-        lbSrcBkt = true;
-        liSrcScn = 1 ;
-        liMchMin = 16 ;
-        liMchMax = 128 ;
-        liHshMbt = 32 ; // 32meg elements
-    } else if (strcmp(acArg[liOptArgCnt], "-f") == 0) {
-        // No compare out-of-buffer
-    	lbCmpAll = false ;
-        llBufSze = 64 * 1024 ;
-        lbSrcBkt = true ;
-        liSrcScn = 1  ;
-        liMchMin = 8 ;
-        liMchMax = 16 ;
-        liHshMbt = 4 ; // 4Meg samples
-    } else if (strcmp(acArg[liOptArgCnt], "-ff") == 0) {
-        // No compare out-of-buffer and no backtracing
-    	lbCmpAll = false ;
-        llBufSze = 4096 * 1024 ;
-        lbSrcBkt = true ;
-        liSrcScn = 0 ;
-        liMchMin = 4 ;
-        liMchMax = 16 ;
-        liHshMbt = 1 ; // 1Meg samples
-    } else if (strcmp(acArg[liOptArgCnt], "-do") == 0) {
+    } else if (strcmp(acArg[liOptArgCnt], "-c") == 0) {
       JDebug::stddbg = stdout;
 
     #if debug
@@ -288,11 +424,11 @@ int main(int aiArgCnt, char *acArg[])
       lbOptArgDne = true ;
       liOptArgCnt-- ;
     }
-  }
+  } */
 
   /* Output greetings */
-  if ((liVerbse>0) || (lcHlp == 'h') || (aiArgCnt - liOptArgCnt < 3)) {
-    fprintf(JDebug::stddbg, "JDIFF - Jojo's binary diff version " JDIFF_VERSION "\n") ;
+  if ((liVerbse>0) || (liHlp > 0 ) || (aiArgCnt - liOptArgCnt < 3)) {
+    fprintf(JDebug::stddbg, "\nJDIFF - binary diff version " JDIFF_VERSION "\n") ;
     fprintf(JDebug::stddbg, JDIFF_COPYRIGHT "\n");
     fprintf(JDebug::stddbg, "\n") ;
     fprintf(JDebug::stddbg, "JojoDiff is free software: you can redistribute it and/or modify\n");
@@ -302,12 +438,11 @@ int main(int aiArgCnt, char *acArg[])
     fprintf(JDebug::stddbg, "\n");
     fprintf(JDebug::stddbg, "This program is distributed in the hope that it will be useful,\n");
     fprintf(JDebug::stddbg, "but WITHOUT ANY WARRANTY; without even the implied warranty of\n");
-    fprintf(JDebug::stddbg, "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n");
+    fprintf(JDebug::stddbg, "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n");
     fprintf(JDebug::stddbg, "GNU General Public License for more details.\n");
     fprintf(JDebug::stddbg, "\n");
     fprintf(JDebug::stddbg, "You should have received a copy of the GNU General Public License\n");
     fprintf(JDebug::stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n");
-    fprintf(JDebug::stddbg, "\n");
 
     off_t maxoff_t_gb = (MAX_OFF_T >> 30) + 1 ;
     const char *maxoff_t_mul = "GB";
@@ -315,51 +450,87 @@ int main(int aiArgCnt, char *acArg[])
     	maxoff_t_gb = maxoff_t_gb >> 10 ;
     	maxoff_t_mul = "TB";
     }
-    fprintf(JDebug::stddbg, "File adressing is %d bit (files up to %"PRIzd" %s), samples are %d bytes.\n\n",
-        sizeof(off_t) * 8, maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
+    fprintf(JDebug::stddbg, "File adressing is %d bit (files up to %" PRIzd " %s), samples are %d bytes.\n\n",
+        (int) (sizeof(off_t) * 8), maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
   }
 
-  if ((aiArgCnt - liOptArgCnt < 3) || (lcHlp == 'h') || (liVerbse>2)) {
-    fprintf(JDebug::stddbg, "Usage: jdiff [options] <original file> <new file> [<output file>]\n") ;
-    fprintf(JDebug::stddbg, "  -v          Verbose (greeting, results and tips).\n");
-    fprintf(JDebug::stddbg, "  -vv         Verbose (debug info).\n");
-    fprintf(JDebug::stddbg, "  -h          Help (this text).\n");
-    fprintf(JDebug::stddbg, "  -l          Listing (ascii output).\n");
-    fprintf(JDebug::stddbg, "  -lr         Regions (ascii output).\n");
-    fprintf(JDebug::stddbg, "  -do         Write verbose and debug info to stdout instead of stddbg.\n");
-    fprintf(JDebug::stddbg, "  -b          Try to be better (using more memory).\n");
-    fprintf(JDebug::stddbg, "  -f          Try to be faster: no out of buffer compares.\n");
-    fprintf(JDebug::stddbg, "  -ff         Try to be faster: no out of buffer compares, nor pre-scanning.\n");
-    fprintf(JDebug::stddbg, "  -m size     Size (in kB) for look-ahead buffer (default 512kB");
-#ifndef __MINGW32__
-    fprintf(JDebug::stddbg, ", 0=no buffers");
-#endif
-    fprintf(JDebug::stddbg, ").\n");
-    fprintf(JDebug::stddbg, "  -bs size    Block size (in bytes) for reading from files (default 4096).\n");
-    fprintf(JDebug::stddbg, "  -s size     Number of samples per file in MB (default 8).\n");
-    fprintf(JDebug::stddbg, "  -a size     Number of kB to look ahead (default=same as buffer-size).\n");
-    fprintf(JDebug::stddbg, "  -min count  Minimum number of solutions to find (default %d, max %d).\n", liMchMin, MCH_MAX);
-    fprintf(JDebug::stddbg, "  -max count  Maximum number of solutions to find (default %d, max %d).\n", liMchMax, MCH_MAX);
+  if ((aiArgCnt - liOptArgCnt < 3) || (liHlp > 0) || (liVerbse>2)) {
+    // ruler:                0---------1---------2---------3---------4---------5---------6---------7---------8
+    fprintf(JDebug::stddbg, "\n");
+    fprintf(JDebug::stddbg, "Usage: jdiff [options] <source file> <destination file> [<output file>]\n") ;
+    fprintf(JDebug::stddbg, "  -v --verbose             Verbose: greeting, results and tips.\n");
+    fprintf(JDebug::stddbg, "  -vv                      Extra Verbose: progress info and statistics.\n");
+    fprintf(JDebug::stddbg, "  -vvv                     Ultra Verbose: all info, including help and details.\n");
+    fprintf(JDebug::stddbg, "  -h --help                Help (this text) and exit.\n");
+    fprintf(JDebug::stddbg, "  -hh                      Additional help (performance options).\n");
+    fprintf(JDebug::stddbg, "  -l --listing             Detailed human readable output.\n");
+    fprintf(JDebug::stddbg, "  -r --regions             Grouped  human readable output.\n");
+    fprintf(JDebug::stddbg, "  -c --console             Write verbose and debug info to stdout.\n");
+    fprintf(JDebug::stddbg, "  -b --better              Be better: use more memory and probably slower.\n");
+    fprintf(JDebug::stddbg, "  -f --faster              Be faster: avoid non-buffered searching.\n");
+    fprintf(JDebug::stddbg, "  -ff                      Be faster: also drop indexing scan.\n");
+    fprintf(JDebug::stddbg, "  -p --sequential-source   Sequential source file (to avoid).\n");
+    fprintf(JDebug::stddbg, "  -q --sequential-dest     Sequential destination file.\n");
+    fprintf(JDebug::stddbg, "  -m --buffer-size <size>  Size (in kB) for search buffer (0=no buffering)\n");
+    fprintf(JDebug::stddbg, "  -k --block-size  <size>  Block size in bytes for reading (default 8192).\n");
+    fprintf(JDebug::stddbg, "  -i --index-size  <size>  Index table in mega-words (default 8,max.2048).\n");
+    fprintf(JDebug::stddbg, "                           Rounded down to a power of 2: 2,4,8,16,32,... .\n");
+    fprintf(JDebug::stddbg, "  -a --search-size <size>  Size (in kB) to search (default=buffer-size).\n");
+    fprintf(JDebug::stddbg, "  -n --search-min <count>  Minimum number of solutions to search (default %d).\n", liMchMin);
+    fprintf(JDebug::stddbg, "  -x --search-max <count>  Maximum number of solutions to search (default %d).\n", liMchMax);
     fprintf(JDebug::stddbg, "Principles:\n");
-    fprintf(JDebug::stddbg, "  JDIFF tries to find equal regions between two binary files using a heuristic\n");
-    fprintf(JDebug::stddbg, "  hash algorithm and outputs the differences between both files.\n");
-    fprintf(JDebug::stddbg, "  Heuristics are generally used for improving performance and memory usage,\n");
-    fprintf(JDebug::stddbg, "  at the cost of accuracy. Therefore, this program may not find a minimal set\n");
-    fprintf(JDebug::stddbg, "  of differences between files.\n");
+    fprintf(JDebug::stddbg, "  JDIFF searches equal regions between two binary files using a heuristic\n");
+    fprintf(JDebug::stddbg, "  hash-index algorithm to find a smallest-as-possible set of differences.\n");
     fprintf(JDebug::stddbg, "Notes:\n");
     fprintf(JDebug::stddbg, "  Options -b, -f or -ff should be used before other options.\n");
-    fprintf(JDebug::stddbg, "  Accuracy may be improved by increasing the number of samples.\n");
-    fprintf(JDebug::stddbg, "  Sample size is always lowered to the largest n-bit prime (n < 32)\n");
-    fprintf(JDebug::stddbg, "  Original and new file must be random access files.\n");
+    fprintf(JDebug::stddbg, "  Accuracy may be improved by increasing the index table size (-i).\n");
+    fprintf(JDebug::stddbg, "  Index table size is always lowered to the largest prime below a power of 2.\n");
+    fprintf(JDebug::stddbg, "  Source and destination files must be random access files.\n");
     fprintf(JDebug::stddbg, "  Output is sent to standard output if output file is missing.\n");
     fprintf(JDebug::stddbg, "Hint:\n");
-    fprintf(JDebug::stddbg, "  Do not use jdiff directly on compressed files, such as zip, gzip, rar, ...\n");
-    fprintf(JDebug::stddbg, "  Instead use uncompressed files, such as tar, cpio or zip-0, and then compress\n");
-    fprintf(JDebug::stddbg, "  the jdiff's output file afterwards.\n");
-    fprintf(JDebug::stddbg, "\n");
-                    /******************************************************************************/
-    if ((aiArgCnt - liOptArgCnt < 3) || (lcHlp == 'h'))
+    fprintf(JDebug::stddbg, "  Do not use jdiff directly on compressed files (zip, gzip, rar, 7z, ...)\n");
+    fprintf(JDebug::stddbg, "  Instead use uncompressed files (cpio, tar, zip-0, ...) and then recompress\n");
+    fprintf(JDebug::stddbg, "  after using jdiff.\n");
+    if ((liHlp>1) || (liVerbse>2)){
+        // ruler:                0---------1---------2---------3---------4---------5---------6---------7---------8
+        fprintf(JDebug::stddbg, "Additional help: rationale of the -i, -m, -n -x, -b, -f and other options.\n");
+        fprintf(JDebug::stddbg, "  JDiff starts by comparing source and destination files.\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  When a difference is found, JDiff will first index the source file.\n");
+        fprintf(JDebug::stddbg, "  Under normal operation, the full source file is indexed, but this can be\n");
+        fprintf(JDebug::stddbg, "  disabled with the -ff option (faster, but a big loss of accuracy). Indexing\n");
+        fprintf(JDebug::stddbg, "  will then be done during searching (so only small differences will be found).\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  Next, JDiff will search for ""solutions"": equal regions between both files.\n");
+        fprintf(JDebug::stddbg, "  The search will use the index table (a hash-table).\n");
+        fprintf(JDebug::stddbg, "  However, the index table is not perfect: too small and inaccurate:\n");
+        fprintf(JDebug::stddbg, "  - too small, because a full index would require too much memory.\n");
+        fprintf(JDebug::stddbg, "  - inaccurate, because the hash-keys are only 32 or 64 bit checksums.\n");
+        fprintf(JDebug::stddbg, "  That's why a bigger index (-i) improves accuracy (and often also speed).\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  Also, a ""match"" from the index table index is verified to improve accuracy:\n");
+        fprintf(JDebug::stddbg, "  - by comparing the matched regions.\n");
+        fprintf(JDebug::stddbg, "  - by confirmation from colliding matches further on.\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  Confirmations however will never fully guarantee a correct match.\n");
+        fprintf(JDebug::stddbg, "  Comparing however is slow when data is not bufferred (must be read from disk).\n");
+        fprintf(JDebug::stddbg, "  With -f/-ff options, JDiff will not compare unbuffered data (faster).\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  Moreover, the first solution is not always the best solution.\n");
+        fprintf(JDebug::stddbg, "  Therefore, JDiff will search a minimum (-n) number of solutions, and\n");
+        fprintf(JDebug::stddbg, "  will continue up to a maximum (-x) number of solutions if data is buffered.\n");
+        fprintf(JDebug::stddbg, "  That's why, besides speed, bigger buffers (-m) may also improve accuracy.\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  With the -p and -ff options, JDiff can only index the source file within the\n");
+        fprintf(JDebug::stddbg, "  buffer, so accuracy will be much reduced (higher -m and -b may re-improve).\n");
+        fprintf(JDebug::stddbg, "  \n");
+        fprintf(JDebug::stddbg, "  Option -b increases the index table and buffers (more speed and accuracy),\n");
+        fprintf(JDebug::stddbg, "  and also the number of solutions to search (slower but better).\n");
+    }
+    if ((aiArgCnt - liOptArgCnt < 3) || (liHlp > 0))
         exit(EXI_ARG);
+  } else if (liVerbse > 0) {
+    fprintf(JDebug::stddbg, "\nUse -h for additional help and usage description.\n");
   }
 
   /* Read filenames */
@@ -457,7 +628,7 @@ int main(int aiArgCnt, char *acArg[])
       break;
   }
 
-  /* Go ... */
+  /* Initialize JDiff object */
   JDiff loJDiff(lpFilOrg, lpFilNew, lpOut,
       liHshMbt * 1024 * 1024, liVerbse,
       lbSrcBkt, liSrcScn, liMchMax, liMchMin, liAhdMax==0?llBufSze:liAhdMax, lbCmpAll);
@@ -466,11 +637,30 @@ int main(int aiArgCnt, char *acArg[])
       fprintf(JDebug::stddbg, "Hastable size    : %d kb. (%d samples).\n", (loJDiff.getHsh()->get_hashsize() + 512) / 1024, loJDiff.getHsh()->get_hashprime()) ;
   }
 
+  /* Show final execution parameters */
+  if (liVerbse>1){
+      fprintf(JDebug::stddbg, "\n");
+      fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
+      fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
+      fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
+      fprintf(JDebug::stddbg, "Hashtable size    (default: 8Mb) (-s): %dMw, %dMb (%d samples)\n",
+              liHshMbt,
+              ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
+              loJDiff.getHsh()->get_hashprime()) ;
+      fprintf(JDebug::stddbg, "Filebuffers size   (default 2Mb) (-m): %ldMb\n", llBufSze * 2 / 1024 / 1024);
+      fprintf(JDebug::stddbg, "Block size         (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
+      fprintf(JDebug::stddbg, "Search ahead max, 0 = buffersize (-a): %dkb\n",  liAhdMax * 2 / 1024 );
+      fprintf(JDebug::stddbg, "Backtrace allowed     (-0 to disable): %s\n",    lbSrcBkt?"yes":"no");
+      fprintf(JDebug::stddbg, "Compare out-of-buffer (-f to disable): %s\n",    lbCmpAll?"yes":"no");
+      fprintf(JDebug::stddbg, "Full indexing scan   (-ff to disbale): %s\n",   (liSrcScn>0)?"yes":"no");
+  }
+
+  /* Execute... */
   int liRet = loJDiff.jdiff();
 
   /* Write statistics */
   if (liVerbse > 1) {
-      fprintf(JDebug::stddbg, "Hashtable size          = %d samples, %d KB, %d MB\n",
+      fprintf(JDebug::stddbg, "\nHashtable size          = %d bytes, %d KB, %d MB\n",
               loJDiff.getHsh()->get_hashsize(),
               (loJDiff.getHsh()->get_hashsize() + 512) / 1024,
               ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024) ;
@@ -481,15 +671,15 @@ int main(int aiArgCnt, char *acArg[])
       fprintf(JDebug::stddbg, "Hashtable overloading   = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
       fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
       fprintf(JDebug::stddbg, "Random    accesses      = %ld\n",  lpFilOrg->seekcount() + lpFilNew->seekcount());
-      fprintf(JDebug::stddbg, "Delete    bytes         = %"PRIzd"\n", lpOut->gzOutBytDel);
-      fprintf(JDebug::stddbg, "Backtrack bytes         = %"PRIzd"\n", lpOut->gzOutBytBkt);
-      fprintf(JDebug::stddbg, "Escape    bytes written = %"PRIzd"\n", lpOut->gzOutBytEsc);
-      fprintf(JDebug::stddbg, "Control   bytes written = %"PRIzd"\n", lpOut->gzOutBytCtl);
+      fprintf(JDebug::stddbg, "Delete    bytes         = %" PRIzd "\n", lpOut->gzOutBytDel);
+      fprintf(JDebug::stddbg, "Backtrack bytes         = %" PRIzd "\n", lpOut->gzOutBytBkt);
+      fprintf(JDebug::stddbg, "Escape    bytes written = %" PRIzd "\n", lpOut->gzOutBytEsc);
+      fprintf(JDebug::stddbg, "Control   bytes written = %" PRIzd "\n", lpOut->gzOutBytCtl);
   }
   if (liVerbse > 0) {
-      fprintf(JDebug::stddbg, "Equal     bytes         = %"PRIzd"\n", lpOut->gzOutBytEql);
-      fprintf(JDebug::stddbg, "Data      bytes written = %"PRIzd"\n", lpOut->gzOutBytDta);
-      fprintf(JDebug::stddbg, "Overhead  bytes written = %"PRIzd"\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
+      fprintf(JDebug::stddbg, "Equal     bytes         = %" PRIzd "\n", lpOut->gzOutBytEql);
+      fprintf(JDebug::stddbg, "Data      bytes written = %" PRIzd "\n", lpOut->gzOutBytDta);
+      fprintf(JDebug::stddbg, "Overhead  bytes written = %" PRIzd "\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
   }
 
   /* Cleanup */
@@ -527,7 +717,7 @@ int main(int aiArgCnt, char *acArg[])
       fprintf(JDebug::stddbg, "Error allocating memory !");
       exit (EXI_MEM);
   case - EXI_ERR:
-      fprintf(JDebug::stddbg, "Spurious error occured !");
+      fprintf(JDebug::stddbg, "Other error occured !");
       exit (EXI_ERR);
   }
 

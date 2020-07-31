@@ -116,7 +116,8 @@ public:
 	    #endif
 	}
 
-	/* Return the reliability range: reliability decreases as the hashtable load
+	/* Return the (un)reliability range: an estimate of the number of bytes to verify
+	 * to find a match. Reliability decreases as the hashtable (over)load
 	 * increases. This function returns an estimation of the number of bytes to verify
 	 * before deciding that regions do not match.
 	 */

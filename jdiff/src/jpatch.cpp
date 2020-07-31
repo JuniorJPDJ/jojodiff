@@ -13,7 +13,8 @@
 * Joris Heirbaut        v0.7    01-09-2009 large-file support
 * Joris Heirbaut        v0.7    29-10-2009 use buffered reading
 * Joris Heirbaut        v0.7    01-11-2009 do not read original file on MOD
-* Joris Heirbaut		v0.8	15-09-2011 C++ wrapping
+* Joris Heirbaut		    v0.8	  15-09-2011 C++ wrapping
+* Joris Heirbaut        v0.8.2  26-07-2020 Update to GCC v10
 *
 * Licence
 * -------
@@ -47,6 +48,9 @@
 #endif
 #ifdef _LARGEFILE64_SOURCE
 #warning _LARGEFILE64_SOURCE set
+#endif
+#ifdef JDIFF_LARGEFILE
+#warning JDIFF_LARGEFILE set
 #endif
 
 
@@ -135,7 +139,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
         case MOD:
           liOpr = MOD;
           if (giVerbse == 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" MOD ...    \n", jftell(asFilOrg)+lzMod-1, jftell(asFilOut)) ;
+            fprintf(stddbg, "" P8zd " " P8zd " MOD ...    \n", jftell(asFilOrg)+lzMod-1, jftell(asFilOut)) ;
           }
           lbChg = true;
           break ;
@@ -143,7 +147,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
         case INS:
           liOpr = INS;
           if (giVerbse == 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" INS ...    \n",
+            fprintf(stddbg, "" P8zd " " P8zd " INS ...    \n",
                     jftell(asFilOrg)+lzMod-1, jftell(asFilOut))   ;
           }
           lbChg = true;
@@ -153,12 +157,12 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           liOpr = DEL;
           lzOff = ufGetInt(asFilPch);
           if (giVerbse >= 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" DEL %"PRIzd"\n",
+            fprintf(stddbg, "" P8zd " " P8zd " DEL %" PRIzd "\n",
                     jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff)  ;
           }
 
           if (jfseek(asFilOrg, lzOff + lzMod, SEEK_CUR) != 0) {
-            fprintf(stderr, "Could not position on original file (seek %"PRIzd" + %"PRIzd").\n", lzOff, lzMod);
+            fprintf(stderr, "Could not position on original file (seek %" PRIzd " + %" PRIzd ").\n", lzOff, lzMod);
             exit(EXI_SEK);
           }
           lzMod = 0;
@@ -169,13 +173,13 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           liOpr = EQL;
           lzOff = ufGetInt(asFilPch);
           if (giVerbse >= 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" EQL %"PRIzd"\n",
+            fprintf(stddbg, "" P8zd " " P8zd " EQL %" PRIzd "\n",
                     jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff) ;
           }
 
           if (lzMod > 0) {
               if (jfseek(asFilOrg, lzMod, SEEK_CUR) != 0) {
-                  fprintf(stderr, "Could not position on original file (skip %"PRIzd").\n", lzMod);
+                  fprintf(stderr, "Could not position on original file (skip %" PRIzd ").\n", lzMod);
                   exit(EXI_SEK);
               }
               lzMod = 0;
@@ -192,11 +196,11 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
               lzOff-=BLKSZE;
           }
           if (lzOff > 0){
-              if (fread(&lcDta, 1, lzOff, asFilOrg) != lzOff) {
+              if (fread(&lcDta, 1, lzOff, asFilOrg) != (size_t) lzOff) {
                   fprintf(stderr, "Error reading original file.\n");
                   exit(EXI_RED);
               }
-              if (fwrite(&lcDta, 1, lzOff, asFilOut) != lzOff) {
+              if (fwrite(&lcDta, 1, lzOff, asFilOut) != (size_t) lzOff) {
                   fprintf(stderr, "Error writing output file.\n");
                   exit(EXI_WRI);
               }
@@ -208,12 +212,12 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           liOpr = BKT ;
           lzOff = ufGetInt(asFilPch) ;
           if (giVerbse >= 1) {
-            fprintf(stddbg, ""P8zd" "P8zd" BKT %"PRIzd"\n",
+            fprintf(stddbg, "" P8zd " " P8zd " BKT %" PRIzd "\n",
                     jftell(asFilOrg)+lzMod, jftell(asFilOut), lzOff)   ;
           }
 
           if (jfseek(asFilOrg, lzMod - lzOff, SEEK_CUR) != 0) {
-            fprintf(stderr, "Could not position on original file (seek back %"PRIzd" - %"PRIzd").\n",
+            fprintf(stderr, "Could not position on original file (seek back %" PRIzd " - %" PRIzd ").\n",
                     lzMod, lzOff);
             exit(EXI_SEK);
           }
@@ -223,14 +227,14 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
 
         case ESC:
           if (giVerbse > 2) {
-            fprintf(stddbg, ""P8zd" "P8zd" ESC ESC\n",
+            fprintf(stddbg, "" P8zd " " P8zd " ESC ESC\n",
                     jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
           }
           break;
 
         default:
           if (giVerbse > 2) {
-            fprintf(stddbg, ""P8zd" "P8zd" ESC XXX\n",
+            fprintf(stddbg, "" P8zd " " P8zd " ESC XXX\n",
                     jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
           }
           lbEsc = true;
@@ -250,7 +254,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
             putc(ESC, asFilOut) ;
             lzMod ++ ;
             if (giVerbse > 2) {
-                fprintf(stddbg, P8zd" "P8zd" MOD %3o ESC\n",
+                fprintf(stddbg, P8zd" " P8zd " MOD %3o ESC\n",
                         jftell(asFilOrg)+lzMod-1, jftell(asFilOut)-1, ESC)  ;
             }
           }
@@ -258,7 +262,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           putc(liInp, asFilOut) ;
           lzMod ++ ;
           if (giVerbse > 2) {
-              fprintf(stddbg, P8zd" "P8zd" MOD %3o %c\n",
+              fprintf(stddbg, P8zd" " P8zd " MOD %3o %c\n",
                       jftell(asFilOrg)+lzMod-1, jftell(asFilOut)-1, liInp,
                       ((liInp >= 32 && liInp <= 127)?(char) liInp:' '))  ;
           }
@@ -267,14 +271,14 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
         case INS :
           if (lbEsc) {
             if (giVerbse > 2) {
-                fprintf(stddbg, P8zd" "P8zd" INS %3o ESC\n",
+                fprintf(stddbg, P8zd" " P8zd " INS %3o ESC\n",
                         jftell(asFilOrg)+lzMod-1, jftell(asFilOut), ESC)  ;
             }
             putc(ESC, asFilOut) ;
           }
 
           if (giVerbse > 2) {
-              fprintf(stddbg, P8zd" "P8zd" INS %3o %c\n",
+              fprintf(stddbg, P8zd" " P8zd " INS %3o %c\n",
                       jftell(asFilOrg)+lzMod-1, jftell(asFilOut), liInp,
                       ((liInp >= 32 && liInp <= 127)?(char) liInp:' '))  ;
           }
@@ -288,7 +292,7 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
   } /* while */
 
   if (giVerbse > 1) {
-      fprintf(stddbg, P8zd" "P8zd" EOF",
+      fprintf(stddbg, P8zd" " P8zd " EOF",
               jftell(asFilOrg)+lzMod, jftell(asFilOut))  ;
   }
 }
@@ -352,7 +356,7 @@ int main(int aiArgCnt, char *acArg[])
     fprintf(stddbg, "You should have received a copy of the GNU General Public License\n");
     fprintf(stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n");
     fprintf(stddbg, "\n");
-    fprintf(stddbg, "File adressing is %d bit.\n", sizeof(off_t) * 8) ;
+    fprintf(stddbg, "File adressing is %d bit.\n", (int) (sizeof(off_t) * 8)) ;
     fprintf(stddbg, "\n");
   }
 

@@ -31,70 +31,92 @@
 #include <stdio.h>
 
 #ifdef _DEBUG
-#define debug           1       /* Include debug code? */
+#define debug           1       /* Include debug code */
 #else
-#define debug           0       /* Include debug code? */
+#define debug           0       /* Do not include debug code */
 #endif
 
 /*
- * Default definitions (for GCC/Linux)
+ * Largefile definitions: how to handle files > 2GB
+ *
+ * Nowadays (in 2020), _FILE_OFFSET_BIT=64 by default (in most cases).
+ * MinGW still sticks to _FILE_OFFSET_BIT=32 by default.
+ * I leave it to the Makefile (or compiler settings) to decide whether or not to enable 64-bit file support.
  */
-#if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
-#define JDIFF_LARGEFILE
-#define off_t off_t
-#define PRIzd "lld"
-
+// If _FILE_OFFSET_BITS works correctly, following should be enough:
+#define off_t    off_t
 #define jfopen   fopen
 #define jfclose  fclose
 #define jfseek   fseeko
 #define jftell   ftello
 
-#else
-#ifdef _LARGEFILE64_SOURCE
+// Indicate JDIFF that files may be larger that 2GB
+#if _FILE_OFFSET_BIT == 64
 #define JDIFF_LARGEFILE
-#define off_t off64_t
-#ifdef __MINGW32__
-#define PRIzd "I64d"
-#else
-#define PRIzd "lld"
 #endif
 
-#define jfopen   fopen64
-#define jfclose  fclose
-#define jfseek   fseeko64
-#define jftell   ftello64
+// Normal definition
+#define PRIzd "zd"
 
-#else
+// MINGW may use ms windows printf that does not recognise %zd
+#if __MINGW_PRINTF_FORMAT == ms_printf
+    #undef PRIzd
+    #if _FILE_OFFSET_BIT == 64
+        #define PRIzd "I64d"  // ms_printf doesn't know about %lld nor %zd
+    #else
+        #define PRIzd "ld"
+    #endif // _FILE_OFFSET_BIT
+#endif // __MINGW_PRINTF_FORMAT
 
-#define off_t off_t
-#define PRIzd "ld"
-
-#define jfopen   fopen
-#define jfclose  fclose
-#define jfseek   fseeko
-#define jftell   ftello
-
-#endif
-#endif
+// Old:
+//#if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
+//
+//#else
+//#ifdef _LARGEFILE64_SOURCE
+//#define JDIFF_LARGEFILE
+//#define off_t off64_t
+//#ifdef __MINGW32__
+//#define PRIzd "I64d"
+//#else
+//#define PRIzd "ld"
+//#endif
+//
+//#define jfopen   fopen64
+//#define jfclose  fclose
+//#define jfseek   fseeko64
+//#define jftell   ftello64
+//
+//#else
+//
+//#define off_t off_t
+//#define PRIzd "ld"
+//
+//#define jfopen   fopen
+//#define jfclose  fclose
+//#define jfseek   fseeko
+//#define jftell   ftello
+//
+//#endif
+//#endif
 
 #ifdef JDIFF_LARGEFILE
 #if debug
-#define P8zd    "%10" PRIzd
+#define P8zd    "%10" PRIzd     // in debug mode, we'll stay with 10 decimals for files > 2GB
 #else
-#define P8zd    "%12" PRIzd
+#define P8zd    "%12" PRIzd     // increase to 12 decimals for files > 2GB
 #endif
 #else
-#define P8zd    "%8" PRIzd
+#define P8zd    "%8" PRIzd      // 8 decimals is ok for files < 2GB
 #endif
 
 /*
  * Global definitions
  */
-#define JDIFF_VERSION   "0.8.1 (beta) December 2011"
-#define JDIFF_COPYRIGHT "Copyright (C) 2002-2005,2009,2011 Joris Heirbaut"
+#define JDIFF_VERSION   "0.8.3 (beta) 2020"
+#define JDIFF_COPYRIGHT "Copyright (C) 2002-2020 Joris Heirbaut"
 
 #define uchar unsigned char
-#define ulong unsigned long int         // unsigned long
+//#define ulong unsigned long int         // unsigned long
 #define null  NULL
 
 #ifdef _LARGESAMPLE

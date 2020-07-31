@@ -45,7 +45,7 @@ public:
      */
     int get(
         const off_t &azPos,   /* position to read from                */
-        const int aiTyp 	  /* 0=read, 1=hard ahead, 2=soft ahead   */
+        const int aiTyp 	    /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
     /**

@@ -74,7 +74,7 @@ bool JOutAsc::put (
       break;
 
     case (DEL) :
-      fprintf(mpFilOut, "DEL %"PRIzd"\n", azLen);
+      fprintf(mpFilOut, "DEL %" PRIzd "\n", azLen);
 
       liOprCur=DEL;
       gzOutBytCtl+=2+ufPutSze(azLen);
@@ -82,7 +82,7 @@ bool JOutAsc::put (
       break;
 
     case (BKT) :
-      fprintf(mpFilOut, "BKT %"PRIzd"\n", azLen);
+      fprintf(mpFilOut, "BKT %" PRIzd "\n", azLen);
 
       liOprCur=BKT;
       gzOutBytCtl+=2+ufPutSze(azLen);

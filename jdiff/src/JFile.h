@@ -37,11 +37,11 @@ public:
 
 	/**
 	 * Get byte at specified address. Auto-increments the address to the next byte.
-	 * Soft read ahead will return an EOB when reading out of the buffer.
+	 * Soft read ahead will return an EOB when date is not in the buffer.
 	 *
 	 * @param azPos		position to read from, gets incremented by one after reading
 	 * @param aiTyp		0=read, 1=hard read ahead, 2=soft read ahead
-	 * @return 			the read character or EOF or EOB.
+	 * @return 			  the read character or EOF or EOB.
 	 */
 	virtual int get (
 	    const off_t &azPos,	/* position to read from                */

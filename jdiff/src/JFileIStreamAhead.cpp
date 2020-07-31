@@ -268,7 +268,7 @@ int JFileIStreamAhead::get_outofbuffer (
 
     if (aiSek != 0) {
         #if debug
-        if (JDebug::gbDbg[DBGBUF]) fprintf(JDebug::stddbg, "ufFabGet: Seek %"PRIzd".\n", azPos);
+        if (JDebug::gbDbg[DBGBUF]) fprintf(JDebug::stddbg, "ufFabGet: Seek %" PRIzd ".\n", azPos);
         #endif
 
         mlFabSek++ ;
@@ -325,7 +325,7 @@ int JFileIStreamAhead::get_outofbuffer (
             if ( mpInp == mpMax ){
               mpInp = mpBuf ;
             } else if ( mpInp > mpMax ) {
-              fprintf(stderr, "Buffer out of bounds on position %"PRIzd")!", azPos);
+              fprintf(stderr, "Buffer out of bounds on position %" PRIzd")!", azPos);
               exit(6);
             }
             if ( miBufUsd < mlBufSze ) miBufUsd += liDne ;
