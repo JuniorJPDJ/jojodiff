@@ -71,6 +71,11 @@ FILE *stddbg;           /* Debug output to stddbg or stdout                */
 #define EQL     0xA3
 #define BKT     0xA2
 
+/** @brief Get an offset from the input file
+*
+* @param  lpFil  input file
+* @return offset
+*/
 off_t ufGetInt( FILE *lpFil ){
   off_t liVal ;
 

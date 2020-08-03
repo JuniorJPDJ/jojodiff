@@ -52,10 +52,9 @@ public:
 	 *   2   if an existing entry has been enlarged
 	 * ---------------------------------------------------------------------------*/
 	int add (
-	  off_t const &czFndOrgAdd,      /* match to add               */
-	  off_t const &czFndNewAdd,
-	  off_t const &czBseNew,
-	  int   ciEqlNew
+	  off_t const &azFndOrgAdd,      /* match to add               */
+	  off_t const &azFndNewAdd,
+	  off_t const &azRedNew
 	);
 
 	/* -----------------------------------------------------------------------------
@@ -71,24 +70,24 @@ public:
 	/* -----------------------------------------------------------------------------
 	 * Cleanup & check if there is free space in the table of matches
 	 * ---------------------------------------------------------------------------*/
-	bool cleanup ( off_t const &czBseNew ) ;
+	int cleanup ( off_t const &czBseNew ) ;
 
 private:
-	/* -----------------------------------------------------------------------------
-	 * Optimize and check validness of a match by comparing files at given offsets.
-	 *
-	 * Searches at given positions for a run of 24 equal bytes.
-	 * Searching continues for the given length unless soft-reading is specified
-	 * and the end-of-buffer is reached.
-	 *
-	 * Arguments:     &rzPosOrg    in/out  position on first file  (out: optimized position)
-	 *                &rzPosNew    in/out  position on second file (out: optimized position)
-	 *                 aiLen       in      number of bytes to compare
-	 *                 aiSft       in      1=hard read, 2=soft read
-	 *
-	 * Return value:   0 = run of 24 equal bytes found
-	 *                 1 = end-of-buffer reached
-	 *                 2 = no run of equal byes found
+	/**
+	 * Verify and optimize matches:
+     * Searches at given positions for a run of 8 equal bytes.
+     * Searching continues for the given length unless soft-reading is specified
+     * and the end-of-buffer is reached.
+     *
+     * @param   &rzPosOrg    in/out  position on first file
+     * @param   &rzPosNew    in/out  position on second file
+     * @param   aiLen       in      number of bytes to compare
+     * @param   aiSft       in      1=hard read, 2=soft read
+     *
+     * @return  0 = no run of equal byes found
+     * @return  1 = continuous run of 8 equal bytes found
+     * @return  2 = EOB reached but at least 4 bytes are equal
+     * @return  3 = EOB reached without equality
 	 * ---------------------------------------------------------------------------*/
 	int check (
 	    off_t &rzPosOrg, off_t &rzPosNew,
@@ -114,8 +113,8 @@ private:
 	    off_t izNew ;           // last  found match (new file position)
 	    off_t izOrg ;           // last  found match (org file position)
 	    off_t izDlt ;           // delta: izOrg = izNew + izDlt
-
-        // int iiCmp ;          // compare status: 0=equal, 1=maybe equal, 2=not equal, 7=unverified unequal
+	    off_t izTst ;           // result of last compare
+	    int iiCmp ;             // result of last compare
 	} rMch ;
 
 	rMch *msMch ;               /* table of matches */

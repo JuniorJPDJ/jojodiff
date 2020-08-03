@@ -106,12 +106,15 @@ public:
 	 * the new value corresponds to a sample of 32 bytes (the lowest bit of the 32'th
 	 * byte still influences the highest bit of the hash value).
 	 */
-	void hash ( int const acNew, hkey &akCurHsh ) const {
+	void hash ( int const acNew, hkey &akCurHsh, int const aiEql ) const {
 	    //alCurHsh =  (alCurHsh << 1) ^ aiCurVal  ;
-	    akCurHsh =  (akCurHsh * 2) + acNew  ;   // faster
+	    //akCurHsh =  (akCurHsh << 1) ^ acNew  ;
+	    //@akCurHsh =  (akCurHsh * 2) + acNew  ;     // faster
+	    akCurHsh =  (akCurHsh * 2) + acNew + aiEql ; // faster
+
 	    #if debug
 	    if (JDebug::gbDbg[DBGHSK])
-	        fprintf(JDebug::stddbg, "Hash Key %"PRIhkey" %x %c\n", akCurHsh, acNew,
+	        fprintf(JDebug::stddbg, "Hash Key %" PRIhkey " %x %c\n", akCurHsh, acNew,
 	                (acNew>=32 && acNew <= 127)?acNew:' ');
 	    #endif
 	}

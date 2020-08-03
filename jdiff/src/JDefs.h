@@ -154,11 +154,11 @@ const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1)))
 /**
  * Output routine constants
  */
-#define ESC     0xA7    /* Escape       */
-#define MOD     0xA6    /* Modify       */
-#define INS     0xA5    /* Insert       */
-#define DEL     0xA4    /* Delete       */
-#define EQL     0xA3    /* Equal        */
-#define BKT     0xA2    /* Backtrace    */
+#define ESC     0xA7    /* 167 Escape       */
+#define MOD     0xA6    /* 166 Modify       */
+#define INS     0xA5    /* 165 Insert       */
+#define DEL     0xA4    /* 164 Delete       */
+#define EQL     0xA3    /* 163 Equal        */
+#define BKT     0xA2    /* 162 Backtrace    */
 
 #endif /* _JDEFS_H */

@@ -3,10 +3,13 @@
 orglst=("synch.0000.tar" "synch.0005.tar" "synch1.tar" "synch3.tar" "tstA1.txt" "tstB1.txt")
 newlst=("synch.0001.tar" "synch.0006.tar" "synch2.tar" "synch4.tar" "tstA2.txt" "tstB2.txt")
 
-# standard optlist
+# allopts
 optlst=("-vv -bb" "-vv --better" "-vv" "-vv --lazy" "-vv -ff" "-vv --buffer-size 0" "-vv -m 65565" "-vv --index-size 8" "-vv -i 800" \
         "--verbose -v --search-size 1" "-vv -a 1024" "-vv -n 1 -x 2" "-vv --search-min 128 --search-max 256" "-vv --block-size 0" "-vv -k 65565"
         "-vv --sequential-source" "-vv --sequential-dest" "-vvpq")
+# defs
+optdef=("-vv -bb" "-vv --better" "-vv" "-vv --lazy" "-vv -ff")
+
 if [[ $# -lt 3 ]]
 then
   echo 'usage: jtst <jdiff-exe> <jpatch-exe> [bat] [lst | all | fil | tar] <dir> [allopts | defs | stats | <opts1> <opts2> ...]'
@@ -67,7 +70,7 @@ then
     shift
   elif [[ "$1" == "defs" ]]
   then
-    optlst=("-vv -b" "-vv" "-vv -f" "-vv -ff")
+    optlst=("${optdef[@]}")
   elif [[ "$1" == "stats" ]]
   then
     optlst=("-b" " " "-f" "-ff"
@@ -90,8 +93,8 @@ then
 
   #ruler   ---------1---------2---------3---------4---------5---------6---------7---------8
   #ruler   12345678901234567890123456789012345678901234567890123456789012345678901234567890
-  echo -e "HDR JDF-file                 SIZE       TIME         DATA /    EQL   / OVH      OPTIONS"
-  lst=$(ls $dir | sed -e 's/\..*$//' | sort | uniq)
+  echo -e "HDR JDF-file                  SIZE TIME            DATA /    EQL   /   OVH    OPTIONS"
+  lst=$(ls $dir | sed -e 's/\..*$//' | uniq | uniq )
   for bse in $lst
   do
     org=""
@@ -141,8 +144,8 @@ then
 
             #cat $TEMP/jdiff.out
             cat $TEMP/jtst.out
-            tme=$(grep "^real" $TEMP/jtst.out)
-            tme=${tme##real?}
+            tme=$(grep "^user" $TEMP/jtst.out)
+            tme=${tme##user?}
 
             dtabyt=$(grep "^Data *bytes" $TEMP/jdiff.out)
             dtabyt=${dtabyt##*=}

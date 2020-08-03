@@ -46,7 +46,7 @@ bool JOutRgn::put (
       case (MOD) :
         gzOutBytCtl+=2;
         gzOutBytDta+=szOprCnt ;
-        fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew - szOprCnt, szOprCnt) ;
+        fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - szOprCnt - azLen, szOprCnt) ;
         break;
 
       case (INS) :
@@ -58,13 +58,13 @@ bool JOutRgn::put (
       case (DEL) :
         gzOutBytCtl+=2;
         gzOutBytDel+=szOprCnt;
-        fprintf(mpFilOut, P8zd " " P8zd " DEL %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew, szOprCnt);
+        fprintf(mpFilOut, P8zd " " P8zd " DEL %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - azLen, szOprCnt);
         break;
 
       case (BKT) :
         gzOutBytCtl+=2;
         gzOutBytBkt+=szOprCnt;
-        fprintf(mpFilOut, P8zd " " P8zd " BKT %" PRIzd "\n", azPosOrg + szOprCnt, azPosNew, szOprCnt);
+        fprintf(mpFilOut, P8zd " " P8zd " BKT %" PRIzd "\n", azPosOrg + szOprCnt - azLen, azPosNew - azLen, szOprCnt);
         break;
 
       case (EQL) :

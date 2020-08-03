@@ -231,7 +231,7 @@ private:
 	/**
 	 * Flush pending output
 	 */
-	void ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql, bool &lbEql) ;
+	void ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql, bool &lbEql) const ;
 
 	/**
 	 * Finds the nearest equal regions between the two files
@@ -254,7 +254,7 @@ private:
     int ufFndAhdScn () ;
 
     /** Hashes the next byte from specified file. */
-    void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) ;
+    void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) const ;
 
 public:
     /*

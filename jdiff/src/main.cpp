@@ -50,81 +50,102 @@
  *  10  error: malloc failed
  *  20  error: any other error
  *
- * Author                Version Date       Modification
- * --------------------- ------- -------    -----------------------
- * Joris Heirbaut        v0.0    10-06-2002 hashed compare
- * Joris Heirbaut                14-06-2002 full compare
- * Joris Heirbaut                17-06-2002 global positions
- * Joris Heirbaut        v0.1    18-06-2002 first well-working runs!!!
- * Joris Heirbaut                19-06-2002 compare in buffer before read position
- * Joris Heirbaut        v0.1    20-06-2002 optimized esc-sequences & lengths
- * Joris Heirbaut        v0.2    24-06-2002 running okay again
- * Joris Heirbaut        v0.2b   01-07-2002 bugfix on length=252
- * Joris Heirbaut        v0.2c   09-07-2002 bugfix on divide by zero in statistics
- * Joris Heirbaut        v0.3a   09-07-2002 hashtable hint only on samplerate
- * Joris Heirbaut          |     09-07-2002 exit code 1 if files are equal
- * Joris Heirbaut          |     12-07-2002 bugfix using ufFabPos in function call
- * Joris Heirbaut        v0.3a   16-07-2002 backtrack on original file
- * Joris Heirbaut        v0.4a   19-07-2002 prescan sourcefile
- * Joris Heirbaut          |     30-08-2002 bugfix in ufFabRst and ufFabPos
- * Joris Heirbaut          |     03-08-2002 bugfix for backtrack before start-of-file
- * Joris Heirbaut          |     09-09-2002 reimplemented filebuffer
- * Joris Heirbaut        v0.4a   10-09-2002 take best of multiple possibilities
- * Joris Heirbaut        v0.4b   11-09-2002 soft-reading from files
- * Joris Heirbaut          |     18-09-2002 moved ufFabCmp from ufFndAhdChk to ufFndAhdAdd/Bst
- * Joris Heirbaut          |     18-09-2002 ufFabOpt - optimize a found solution
- * Joris Heirbaut          |     10-10-2002 added Fab->izPosEof to correctly handle EOF condition
- * Joris Heirbaut        v0.4b   16-10-2002 replaces ufFabCmpBck and ufFabCmpFwd with ufFabFnd
- * Joris Heirbaut        v0.4c   04-11-2002 use ufHshFnd after prescanning
- * Joris Heirbaut          |     04-11-2002 no reset of matching table
- * Joris Heirbaut          |     21-12-2002 rewrite of matching table logic
- * Joris Heirbaut          |     24-12-2002 no compare in ufFndAhdAdd
- * Joris Heirbaut          |     02-01-2003 restart finding matches at regular intervals when no matches are found
- * Joris Heirbaut          |     09-01-2003 renamed ufFabBkt to ufFabSek, use it for DEL and BKT instructions
- * Joris Heirbaut        v0.4c   23-01-2003 distinguish between EOF en EOB
- * Joris Heirbaut        v0.5    27-02-2003 dropped "fast" hash method (it was slow!)
- * Joris Heirbaut          |     22-05-2003 started    rewrite of FAB-abstraction
- * Joris Heirbaut          |     30-06-2003 terminated rewrite ...
- * Joris Heirbaut          |     08-07-2003 correction in ufMchBst (llTstNxt = *alBstNew + 1 iso -1)
- * Joris Heirbaut        v0.5    02-09-2003 production
- * Joris Heirbaut        v0.6    29-04-2005 large-file support
- * Joris Heirbaut        v0.7    23-06-2009 differentiate between position 0 and notfound in ufMchBst
- * Joris Heirbaut          |     23-06-2009 optimize collission strategy using sample quality
- * Joris Heirbaut          |     24-06-2009 introduce quality of samples
- * Joris Heirbaut          |     26-06-2009 protect first samples
- * Joris Heirbaut        v0.7g   24-09-2009 use fseeko for cygwin largefiles
- * Joris Heirbaut          |     24-09-2009 removed casts to int from ufFndAhd
- * Joris Heirbaut        v0.7h   24-09-2009 faster ufFabGetNxt
- * Joris Heirbaut          |     24-09-2009 faster ufHshAdd: remove quality of hashes
- * Joris Heirbaut        v0.7i   25-09-2009 drop use of ufHshBitCnt
- * Joris Heirbaut        v0.7l   04-10-2009 increment glMchMaxDst as hashtable overloading grows
- * Joris Heirbaut          |     16-10-2009 finalization
- * Joris Heirbaut        v0.7m   17-10-2009 gprof optimization ufHshAdd
- * Joris Heirbaut        v0.7n   17-10-2009 gprof optimization ufFabGet
- * Joris Heirbaut        v0.7o   18-10-2009 gprof optimization asFab->iiRedSze
- * Joris Heirbaut        v0.7p   19-10-2009 ufHshAdd: check uniform distribution
- * Joris Heirbaut        v0.7q   23-10-2009 ufFabGet: scroll back on buffer
- * Joris Heirbaut          |     19-10-2009 ufFndAhd: liMax = giBufSze
- * Joris Heirbaut          |     25-10-2009 ufMchAdd: gliding matches
- * Joris Heirbaut          |     25-10-2009 ufOut: return true for faster EQL sequences in jdiff function
- * Joris Heirbaut        v0.7r   27-10-2009 ufMchBst: test position for gliding matches
- * Joris Heirbaut          |     27-10-2009 ufMchBst: remove double loop
- * Joris Heirbaut          |     27-10-2009 ufMchBst: double linked list ordered on azPosOrg
- * Joris Heirbaut          |     27-10-2009 ufFndAhd: look back on reset (liBck)
- * Joris Heirbaut          |     27-10-2009 ufFndAhd: reduce lookahead after giMchMin (speed optimization)
- * Joris Heirbaut        v0.7x   05-11-2009 ufMchAdd: hashed method
- * Joris Heirbaut        v0.7y   13-11-2009 ufMchBst: store unmatched samples too (reduce use of ufFabFnd)
- * Joris Heirbaut        v0.8    Sep  2011  Conversion to C++
- * Joris Heirbaut        v0.8.1  Dec  2011  Correction in Windows exe for files > 2GB
- * Joris Heirbaut        v0.8.2  Dec  2015  use jfopen/jfclose/jfread/jfseek to avoid interferences with LARGEFILE redefinitions
- * Joris Heirbaut          |     Feb  2015  bugfix: virtual destructors for JFile and JOut to avoid memory leaks
- * Joris Heirbaut        v0.8.3a July 2020  improved progress feedback
- *                                          use getopts_long for option processing
- *                                          index tablke in mb, search for nearest lower prime with isPrime
- * Joris Heirbaut        v0.8.3b July 2020  theak JDiff.ufFndAhd.liMax for longer searches
+ * Author    Version Date       Modification
+ * --------  ------- -------    -----------------------
+ * joheirba  v0.0    10-06-2002 hashed compare
+ * joheirba          14-06-2002 full compare
+ * joheirba          17-06-2002 global positions
+ * joheirba  v0.1    18-06-2002 first well-working runs!!!
+ * joheirba          19-06-2002 compare in buffer before read position
+ * joheirba  v0.1    20-06-2002 optimized esc-sequences & lengths
+ * joheirba  v0.2    24-06-2002 running okay again
+ * joheirba  v0.2b   01-07-2002 bugfix on length=252
+ * joheirba  v0.2c   09-07-2002 bugfix on divide by zero in statistics
+ * joheirba  v0.3a   09-07-2002 hashtable hint only on samplerate
+ * joheirba    |     09-07-2002 exit code 1 if files are equal
+ * joheirba    |     12-07-2002 bugfix using ufFabPos in function call
+ * joheirba  v0.3a   16-07-2002 backtrack on original file
+ * joheirba  v0.4a   19-07-2002 prescan sourcefile
+ * joheirba    |     30-08-2002 bugfix in ufFabRst and ufFabPos
+ * joheirba    |     03-08-2002 bugfix for backtrack before start-of-file
+ * joheirba    |     09-09-2002 reimplemented filebuffer
+ * joheirba  v0.4a   10-09-2002 take best of multiple possibilities
+ * joheirba  v0.4b   11-09-2002 soft-reading from files
+ * joheirba    |     18-09-2002 moved ufFabCmp from ufFndAhdChk to ufFndAhdAdd/Bst
+ * joheirba    |     18-09-2002 ufFabOpt - optimize a found solution
+ * joheirba    |     10-10-2002 added Fab->izPosEof to correctly handle EOF condition
+ * joheirba  v0.4b   16-10-2002 replaces ufFabCmpBck and ufFabCmpFwd with ufFabFnd
+ * joheirba  v0.4c   04-11-2002 use ufHshFnd after prescanning
+ * joheirba    |     04-11-2002 no reset of matching table
+ * joheirba    |     21-12-2002 rewrite of matching table logic
+ * joheirba    |     24-12-2002 no compare in ufFndAhdAdd
+ * joheirba    |     02-01-2003 restart finding matches at regular intervals when no matches are found
+ * joheirba    |     09-01-2003 renamed ufFabBkt to ufFabSek, use it for DEL and BKT instructions
+ * joheirba  v0.4c   23-01-2003 distinguish between EOF en EOB
+ * joheirba  v0.5    27-02-2003 dropped "fast" hash method (it was slow!)
+ * joheirba    |     22-05-2003 started    rewrite of FAB-abstraction
+ * joheirba    |     30-06-2003 terminated rewrite ...
+ * joheirba    |     08-07-2003 correction in ufMchBst (llTstNxt = *alBstNew + 1 iso -1)
+ * joheirba  v0.5    02-09-2003 production
+ * joheirba  v0.6    29-04-2005 large-file support
+ * joheirba  v0.7    23-06-2009 differentiate between position 0 and notfound in ufMchBst
+ * joheirba    |     23-06-2009 optimize collission strategy using sample quality
+ * joheirba    |     24-06-2009 introduce quality of samples
+ * joheirba    |     26-06-2009 protect first samples
+ * joheirba  v0.7g   24-09-2009 use fseeko for cygwin largefiles
+ * joheirba    |     24-09-2009 removed casts to int from ufFndAhd
+ * joheirba  v0.7h   24-09-2009 faster ufFabGetNxt
+ * joheirba    |     24-09-2009 faster ufHshAdd: remove quality of hashes
+ * joheirba  v0.7i   25-09-2009 drop use of ufHshBitCnt
+ * joheirba  v0.7l   04-10-2009 increment glMchMaxDst as hashtable overloading grows
+ * joheirba    |     16-10-2009 finalization
+ * joheirba  v0.7m   17-10-2009 gprof optimization ufHshAdd
+ * joheirba  v0.7n   17-10-2009 gprof optimization ufFabGet
+ * joheirba  v0.7o   18-10-2009 gprof optimization asFab->iiRedSze
+ * joheirba  v0.7p   19-10-2009 ufHshAdd: check uniform distribution
+ * joheirba  v0.7q   23-10-2009 ufFabGet: scroll back on buffer
+ * joheirba    |     19-10-2009 ufFndAhd: liMax = giBufSze
+ * joheirba    |     25-10-2009 ufMchAdd: gliding matches
+ * joheirba    |     25-10-2009 ufOut: return true for faster EQL sequences in jdiff function
+ * joheirba  v0.7r   27-10-2009 ufMchBst: test position for gliding matches
+ * joheirba    |     27-10-2009 ufMchBst: remove double loop
+ * joheirba    |     27-10-2009 ufMchBst: double linked list ordered on azPosOrg
+ * joheirba    |     27-10-2009 ufFndAhd: look back on reset (liBck)
+ * joheirba    |     27-10-2009 ufFndAhd: reduce lookahead after giMchMin (speed optimization)
+ * joheirba  v0.7x   05-11-2009 ufMchAdd: hashed method
+ * joheirba  v0.7y   13-11-2009 ufMchBst: store unmatched samples too (reduce use of ufFabFnd)
+ * joheirba  v0.8     Sep  2011 Conversion to C++
+ * joheirba  v0.8.1   Dec  2011 Correction in Windows exe for files > 2GB
+ * joheirba  v0.8.2   Dec  2015 use jfopen/jfclose/jfread/jfseek to avoid interferences with LARGEFILE redefinitions
+ * joheirba    |      Feb  2015 bugfix: virtual destructors for JFile and JOut to avoid memory leaks
+ * joheirba  v0.8.3a  July 2020 improved progress feedback
+ *                              use getopts_long for option processing
+ *                              index tablke in mb, search for nearest lower prime with isPrime
+ * joheirba  v0.8.3b  July 2020 tweak JDiff.ufFndAhd.liMax for longer searches
+ * joheirba  v0.8.3g  July 2020 JMatchTable::get refactoring
+ * joheirba  v0.8.3h  Aug  2020 hash: use liEql to improve quality of hashes
+ * joheirba  v0.8.3i  Aug  2020 JDiff review lookahead reset logic
+ * joheirba  v0.8.3j  Aug       Review matching table logic
  *
  *******************************************************************************/
 
+ /******************************************************************************
+  * TODO     DONE
+  * 07-2020  083g   JMatchTable::get : reduce liRlb and improve performance
+  * 07-2020  083h   hash: use liEql to improve quality of hashes
+  * 07-2020         Differentiate between src/dst out-of-buffer compares for -p/-q
+  * 07-2020         Allow stdin as src/dst file
+  * 07-2020         Check hashtable dist with -p/-q/-ff
+  * 07-2020         JDiff::ufFndAhd count existing matches and new colliding matches
+  * 07-2020         Align buffered reads on block boundaries ?
+  * 07-2020         Assure that lookahead search advances at least half a buffer
+  * 07-2020         ufFndAhd: reduce liMax to azAhdMax ?
+  * 08-2020         JMatchTable::get : improve performance by prechecking
+  * 08-2020         JMatchTable::get : consider lentgh of jump (2+x offsett bytes)
+  * 08-2020         Improve gliding match logic to handle skips
+  * 08-2020         Drop azPos arguments from output routines
+  * 08-2020         Refactor hashtable to structure
+  ******************************************************************************/
 /*
  * Includes
  */
@@ -187,6 +208,7 @@ struct option gsOptLng [] = {
 *************************************************************************************/
 int main(int aiArgCnt, char *acArg[])
 {
+  const char std[]="-";
   const char *lcFilNamOrg;      /* Source filename                                  */
   const char *lcFilNamNew;      /* Destination filename                             */
   const char *lcFilNamOut;      /* Output filename (-=stdout)                       */
@@ -199,8 +221,8 @@ int main(int aiArgCnt, char *acArg[])
   int lbSrcBkt = true;          /* Backtrace on sourcefile allowed?                 */
   bool lbCmpAll = true ;        /* Compare even if data not in buffer?              */
   int liSrcScn = 1 ;            /* Prescan source file: 0=no, 1=do, 2=done          */
-  int liMchMax = 32 ;           /* Maximum entries in matching table.               */
-  int liMchMin = 8 ;            /* Minimum entries in matching table.               */
+  int liMchMax = 64 ;           /* Maximum entries in matching table.               */
+  int liMchMin = 32 ;           /* Minimum entries in matching table.               */
   int liHshMbt = 64 ;           /* Hashtable size in MB (* 1024 * 1024)             */
   long llBufSze = 1024*1024 ;   /* Default file-buffers size (in bytes)             */
   int liBlkSze = 8192 ;         /* Default block size (in bytes)                    */
@@ -256,7 +278,7 @@ int main(int aiArgCnt, char *acArg[])
         break;
     case 'p': // sequential source file
         lbCmpAll=false ;            // only compare data within the buffer
-        lbSrcBkt=false ;            // only advance on source file
+        lbSrcBkt=false ;            // only backtrack on source file in buffer
         liSrcScn=0;                 // no pre-scan indexing
         liMchMin=0;                 // do not search out of buffer
         break;
@@ -309,27 +331,27 @@ int main(int aiArgCnt, char *acArg[])
 
     #if debug
     case 'd': // debug
-        if (strcmp(optarg, "-dhsh") == 0) {
+        if (strcmp(optarg, "hsh") == 0) {
           JDebug::gbDbg[DBGHSH] = true ;
-        } else if (strcmp(optarg, "-dahd") == 0) {
+        } else if (strcmp(optarg, "ahd") == 0) {
           JDebug::gbDbg[DBGAHD] = true ;
-        } else if (strcmp(optarg, "-dcmp") == 0) {
+        } else if (strcmp(optarg, "cmp") == 0) {
           JDebug::gbDbg[DBGCMP] = true ;
-        } else if (strcmp(optarg, "-dprg") == 0) {
+        } else if (strcmp(optarg, "prg") == 0) {
           JDebug::gbDbg[DBGPRG] = true ;
-        } else if (strcmp(optarg, "-dbuf") == 0) {
+        } else if (strcmp(optarg, "buf") == 0) {
           JDebug::gbDbg[DBGBUF] = true ;
-        } else if (strcmp(optarg, "-dhsk") == 0) {
+        } else if (strcmp(optarg, "hsk") == 0) {
           JDebug::gbDbg[DBGHSK] = true ;
-        } else if (strcmp(optarg, "-dahh") == 0) {
+        } else if (strcmp(optarg, "ahh") == 0) {
           JDebug::gbDbg[DBGAHH] = true ;
-        } else if (strcmp(optarg, "-dbkt") == 0) {
+        } else if (strcmp(optarg, "bkt") == 0) {
           JDebug::gbDbg[DBGBKT] = true ;
-        } else if (strcmp(optarg, "-dred") == 0) {
+        } else if (strcmp(optarg, "red") == 0) {
           JDebug::gbDbg[DBGRED] = true ;
-        } else if (strcmp(optarg, "-dmch") == 0) {
+        } else if (strcmp(optarg, "mch") == 0) {
           JDebug::gbDbg[DBGMCH] = true ;
-        } else if (strcmp(optarg, "-ddst") == 0) {
+        } else if (strcmp(optarg, "dst") == 0) {
           JDebug::gbDbg[DBGDST] = true ;
         }
         break ;
@@ -356,7 +378,7 @@ int main(int aiArgCnt, char *acArg[])
     fprintf(JDebug::stddbg, "GNU General Public License for more details.\n");
     fprintf(JDebug::stddbg, "\n");
     fprintf(JDebug::stddbg, "You should have received a copy of the GNU General Public License\n");
-    fprintf(JDebug::stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n");
+    fprintf(JDebug::stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n\n");
 
     off_t maxoff_t_gb = (MAX_OFF_T >> 30) + 1 ;
     const char *maxoff_t_mul = "GB";
@@ -364,7 +386,7 @@ int main(int aiArgCnt, char *acArg[])
     	maxoff_t_gb = maxoff_t_gb >> 10 ;
     	maxoff_t_mul = "TB";
     }
-    fprintf(JDebug::stddbg, "File adressing is %d bit (files up to %" PRIzd " %s), samples are %d bytes.\n\n",
+    fprintf(JDebug::stddbg, "File adressing is %d bit (files up to %" PRIzd " %s), samples are %d bytes.\n",
         (int) (sizeof(off_t) * 8), maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
   }
 
@@ -479,8 +501,12 @@ int main(int aiArgCnt, char *acArg[])
       lpFilOrg = new JFileAhead(lfFilOrg, "Org", llBufSze, liBlkSze);
   }
 #else
-  liFilOrg = new ifstream();
-  liFilOrg->open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
+  //if (strcmp(lcFilNamOrg, std) == 0 )
+  //  liFilOrg = cin ; //stdin ;
+  //else {
+    liFilOrg = new ifstream();
+    liFilOrg->open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
+  //}
   if (liFilOrg->is_open()){
 	  if (llBufSze > 0){
 		  lpFilOrg = new JFileIStreamAhead(liFilOrg, "Org",  llBufSze, liBlkSze);
@@ -501,8 +527,12 @@ int main(int aiArgCnt, char *acArg[])
       lpFilNew = new JFileAhead(lfFilNew, "New", llBufSze, liBlkSze);
   }
 #else
-  liFilNew = new ifstream();
-  liFilNew->open(lcFilNamNew, ios_base::in | ios_base::binary) ;
+  //if (strcmp(lcFilNamNew, std) == 0 )
+  //  lpFilNew = stdin ;
+  //else {
+    liFilNew = new ifstream();
+    liFilNew->open(lcFilNamNew, ios_base::in | ios_base::binary) ;
+  //}
   if (liFilNew->is_open()){
 	  if (llBufSze > 0){
 		  lpFilNew = new JFileIStreamAhead(liFilNew, "New",  llBufSze, liBlkSze);
@@ -517,7 +547,7 @@ int main(int aiArgCnt, char *acArg[])
   }
 
   /* Open output */
-  if (strcmp(lcFilNamOut,"-") == 0 )
+  if (strcmp(lcFilNamOut,std) == 0 )
       lpFilOut = stdout ;
   else
       lpFilOut = fopen(lcFilNamOut, "wb") ;
@@ -553,18 +583,17 @@ int main(int aiArgCnt, char *acArg[])
   /* Show execution parameters */
   if (liVerbse>1){
       fprintf(JDebug::stddbg, "\n");
-      fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
-      fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
-      fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
-      fprintf(JDebug::stddbg, "Hashtable size   (default: 64Mb) (-s): %dMb (%d samples)\n",
+      fprintf(JDebug::stddbg, "Index table size (default: 64Mb) (-s): %dMb (%d samples)\n",
               ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
               loJDiff.getHsh()->get_hashprime()) ;
-      fprintf(JDebug::stddbg, "Filebuffers size   (default 2Mb) (-m): %ldMb\n", llBufSze * 2 / 1024 / 1024);
-      fprintf(JDebug::stddbg, "Block size         (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
-      fprintf(JDebug::stddbg, "Search ahead max, 0 = buffersize (-a): %dkb\n",  liAhdMax * 2 / 1024 );
-      fprintf(JDebug::stddbg, "Backtrace allowed     (-0 to disable): %s\n",    lbSrcBkt?"yes":"no");
+      fprintf(JDebug::stddbg, "Search size       0 = buffersize (-a): %dkb\n",  liAhdMax / 1024 );
+      fprintf(JDebug::stddbg, "Buffer size        (default 2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
+      fprintf(JDebug::stddbg, "Block  size        (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
+      fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
+      fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
       fprintf(JDebug::stddbg, "Compare out-of-buffer (-f to disable): %s\n",    lbCmpAll?"yes":"no");
       fprintf(JDebug::stddbg, "Full indexing scan   (-ff to disbale): %s\n",   (liSrcScn>0)?"yes":"no");
+      fprintf(JDebug::stddbg, "Backtrace allowed     (-0 to disable): %s\n",    lbSrcBkt?"yes":"no");
   }
 
   /* Execute... */
@@ -572,15 +601,11 @@ int main(int aiArgCnt, char *acArg[])
 
   /* Write statistics */
   if (liVerbse > 1) {
-      fprintf(JDebug::stddbg, "\nHashtable size          = %d bytes, %d KB, %d MB\n",
-              loJDiff.getHsh()->get_hashsize(),
-              (loJDiff.getHsh()->get_hashsize() + 512) / 1024,
-              ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024) ;
-      fprintf(JDebug::stddbg, "Hashtable prime         = %d\n",   loJDiff.getHsh()->get_hashprime()) ;
-      fprintf(JDebug::stddbg, "Hashtable hits          = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
-      fprintf(JDebug::stddbg, "Hashtable misses (ugh)  = %d\n",   loJDiff.getHshErr()) ;
-      fprintf(JDebug::stddbg, "Hashtable repairs       = %d\n",   JMatchTable::siHshRpr) ;
-      fprintf(JDebug::stddbg, "Hashtable overloading   = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
+      fprintf(JDebug::stddbg, "\n");
+      fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
+      fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   JMatchTable::siHshRpr) ;
+      fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
+      fprintf(JDebug::stddbg, "Search      errors      = %d\n",   loJDiff.getHshErr()) ;
       fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
       fprintf(JDebug::stddbg, "Source      seeks       = %ld\n",  lpFilOrg->seekcount());
       fprintf(JDebug::stddbg, "Destination seeks       = %ld\n",  lpFilNew->seekcount());

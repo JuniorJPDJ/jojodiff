@@ -107,7 +107,9 @@ void JOutBin::ufPutLen ( off_t azLen  )
  * data stream.
  * ---------------------------------------------------------------*/
 void JOutBin::ufPutOpr ( int aiOpr )
-{ if (mbOutEsc) {
+{   // first output a pending escape
+    // as a real escape will follow, the data escape must be protected
+    if (mbOutEsc) {
     putc(ESC, mpFilOut) ;
     putc(ESC, mpFilOut) ;
     mbOutEsc = false ;
@@ -128,19 +130,25 @@ void JOutBin::ufPutOpr ( int aiOpr )
  * ---------------------------------------------------------------*/
 void JOutBin::ufPutByt ( int aiByt )
 {
+  // handle a pending escape data byte
   if (mbOutEsc) {
     mbOutEsc = false;
     if (aiByt >= BKT && aiByt <= ESC) {
-      /* output an additional <esc> byte */
+      // an <es><opcode> sequence within the datastrem,
+      // is protected by an additional <esc>
       putc(ESC, mpFilOut) ;
       gzOutBytEsc++ ;
     }
+    // write the pending escape
     putc(ESC, mpFilOut) ;
     gzOutBytDta++;
   }
+  // output the incoming byte
   if (aiByt == ESC) {
+    // do not output now, wait to see what follows
     mbOutEsc = true ;
   } else {
+    // output byte
     putc(aiByt, mpFilOut) ;
     gzOutBytDta++;
   }

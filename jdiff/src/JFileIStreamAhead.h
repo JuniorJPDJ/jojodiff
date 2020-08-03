@@ -84,8 +84,8 @@ private:
      */
     int get_outofbuffer(
         const off_t &azPos, /* position to read from                */
-        const int aiTyp, /* 0=read, 1=hard ahead, 2=soft ahead   */
-        const int aiSek /* perform seek: 0=append, 1=seek, 2=scroll back  */
+        const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+//@        const int aiSek /* perform seek: 0=append, 1=seek, 2=scroll back  */
     );
 
 private:
