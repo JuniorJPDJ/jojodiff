@@ -14,7 +14,7 @@ debug:		jdifd jpatcd
 
 CC=gcc
 CPP=g++
-NATIVE=-march=native
+NATIVE=-march=native -m64
 CFLAGS=$(NATIVE) -O2 -Wall 
 
 debug:DBG=-g -D_DEBUG

@@ -138,13 +138,23 @@
   * 07-2020         Check hashtable dist with -p/-q/-ff
   * 07-2020         JDiff::ufFndAhd count existing matches and new colliding matches
   * 07-2020         Align buffered reads on block boundaries ?
-  * 07-2020         Assure that lookahead search advances at least half a buffer
+  * 07-2020  083l   Assure that lookahead search advances at least half a buffer
   * 07-2020         ufFndAhd: reduce liMax to azAhdMax ?
   * 08-2020         JMatchTable::get : improve performance by prechecking
   * 08-2020         JMatchTable::get : consider lentgh of jump (2+x offsett bytes)
-  * 08-2020         Improve gliding match logic to handle skips
+  * 08-2020  083?   Improve gliding match logic to handle skips
   * 08-2020         Drop azPos arguments from output routines
   * 08-2020         Refactor hashtable to structure
+  * 08-2020         Refactor get_outofbuffer
+  * 08-2020  083l   Remove panic from ufFndAhd (introduced liFre)
+  * 08-2020         Drop liMchMax
+  * 08-2020         Reduce initialization time of match table (watermark)
+  * 08-2020         Drop -a and -x, convert Mb/kb upon instantiation
+  * 08-2020         Integrate JMatchTable add, get and cleanup
+  *
+  * CLEANUP
+  * - //@
+  * - FY=2 ?
   ******************************************************************************/
 /*
  * Includes
@@ -221,8 +231,9 @@ int main(int aiArgCnt, char *acArg[])
   int lbSrcBkt = true;          /* Backtrace on sourcefile allowed?                 */
   bool lbCmpAll = true ;        /* Compare even if data not in buffer?              */
   int liSrcScn = 1 ;            /* Prescan source file: 0=no, 1=do, 2=done          */
-  int liMchMax = 64 ;           /* Maximum entries in matching table.               */
-  int liMchMin = 32 ;           /* Minimum entries in matching table.               */
+  //@int liMchMax = 64 ;           /* Maximum entries in matching table.               */
+  int liMchMax = MCH_MAX ;      /* Maximum entries in matching table.               */
+  int liMchMin = 8 ;            /* Minimum entries in matching table.               */
   int liHshMbt = 64 ;           /* Hashtable size in MB (* 1024 * 1024)             */
   long llBufSze = 1024*1024 ;   /* Default file-buffers size (in bytes)             */
   int liBlkSze = 8192 ;         /* Default block size (in bytes)                    */
@@ -253,26 +264,23 @@ int main(int aiArgCnt, char *acArg[])
         lbSrcBkt = true;          // allow going back on source file
         liSrcScn = 1 ;            // create full index on source file
         llBufSze *= 4 ;           // larger buffer (more soft-ahead searching)
-        liMchMin *= 2 ;           // search at least 16 matches (go out of buffer if needed)
+        liMchMin *= 2 ;           // increase minimum number of matches to search
         liMchMax *= 2 ;           // maximum buffered search
         liHshMbt *= 4 ;           // Increase index table size
         break;
     case 'f': // faster
         if (lbCmpAll){
             lbCmpAll = false ;      // No compares out-of-buffer (only verify hashtable matches when data is available in memory buffers)
-            llBufSze = 64 * 1024 ;
+            llBufSze *= 4 ;         // increase buffer size to have more lookahead indexing
             lbSrcBkt = true ;
             liSrcScn = 1  ;
-            liMchMin = 8 ;
-            liMchMax = 16 ;
+            liMchMin *= 2 ;
+            //liMchMax = 16 ;
         } else {
             // even faster
-            lbCmpAll = false ;      // No compares out-of-buffer
-            llBufSze = 4096 * 1024; // increase buffer size to have more lookahead indexing
-            lbSrcBkt = true ;
             liSrcScn = 0 ;          // No indexing scan, indexing is limited ookahead search
-            liMchMin = 4 ;
-            liMchMax = MCH_MAX ;    // Increase buffered lookahead to its maximum
+            liMchMin /= 2 ;
+            //liMchMax = MCH_MAX ;    // Increase buffered lookahead to its maximum
         }
         liHshMbt /= 2 ;             // Reduce index table by 2
         break;
@@ -600,6 +608,9 @@ int main(int aiArgCnt, char *acArg[])
   int liRet = loJDiff.jdiff();
 
   /* Write statistics */
+//  if (liVerbse > 2 && liSrcScn == 0) {
+//      loJDiff.getHsh()->dist() ;
+//  }
   if (liVerbse > 1) {
       fprintf(JDebug::stddbg, "\n");
       fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
@@ -614,13 +625,12 @@ int main(int aiArgCnt, char *acArg[])
       fprintf(JDebug::stddbg, "Escape      bytes       = %" PRIzd "\n", lpOut->gzOutBytEsc);
       fprintf(JDebug::stddbg, "Control     bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl);
   }
-  if (liVerbse > 2) {
-    //loJDiff.getHsh()->dist() ;
-  }
   if (liVerbse > 0) {
       fprintf(JDebug::stddbg, "Equal       bytes       = %" PRIzd "\n", lpOut->gzOutBytEql);
       fprintf(JDebug::stddbg, "Data        bytes       = %" PRIzd "\n", lpOut->gzOutBytDta);
-      fprintf(JDebug::stddbg, "Overhead    bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
+      fprintf(JDebug::stddbg, "Control-Esc bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
+      fprintf(JDebug::stddbg, "Total       bytes       = %" PRIzd "\n",
+          lpOut->gzOutBytCtl + lpOut->gzOutBytEsc + lpOut->gzOutBytDta);
   }
 
   /* Cleanup */

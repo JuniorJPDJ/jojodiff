@@ -93,7 +93,7 @@ then
 
   #ruler   ---------1---------2---------3---------4---------5---------6---------7---------8
   #ruler   12345678901234567890123456789012345678901234567890123456789012345678901234567890
-  echo -e "HDR JDF-file                  SIZE TIME            DATA /    EQL   /   OVH    OPTIONS"
+  echo -e "HDR JDF-file                  SIZE TIME            DATA /    OVH   /    EQL   OPTIONS"
   lst=$(ls $dir | sed -e 's/\..*$//' | uniq | uniq )
   for bse in $lst
   do
@@ -137,7 +137,7 @@ then
             opt=${optlst[optind]}
             dif=${new%.*}.$(printf %02d $optind).jdf
             echo "------------------------------------------------------------"
-            echo "$jdiff $opt $org $new $dif"
+            echo "$(date) $jdiff $opt $org $new $dif"
             #(time nice -n 20 $jdiff $opt $org $new $dif 2>$TEMP/jdiff.out) 2>$TEMP/jtst.out
             (time $jdiff $opt $org $new $dif 2>&1 | tee $TEMP/jdiff.out) 2>$TEMP/jtst.out
             echo "Exit code = $?"
@@ -151,7 +151,8 @@ then
             dtabyt=${dtabyt##*=}
             eqlbyt=$(grep "^Equal *bytes" $TEMP/jdiff.out)
             eqlbyt=${eqlbyt##*=}
-            ovhbyt=$(grep "^Overhead *bytes" $TEMP/jdiff.out)
+            ovhbyt=$(grep "^Control-Esc *bytes" $TEMP/jdiff.out)
+            [[ -z "$ovhbyt" ]] && ovhbyt=$(grep "^Overhead *bytes" $TEMP/jdiff.out)
             ovhbyt=${ovhbyt##*=}
 
             gzip -f $dif
@@ -164,7 +165,7 @@ then
             #out=${out%% $dif*}
             out=$(stat -c%s "$dif.gz")
 
-            echo "if zcat $dif.gz | $jpatch $org - | cmp -s $new"
+            echo "$(date) if zcat $dif.gz | $jpatch $org - | cmp -s $new"
             if [[ $typ = w32 ]]
             then
               gunzip $dif.gz
@@ -189,7 +190,8 @@ then
             fi
             #ruler  ---------1---------2---------3---------4---------5---------6---------7---------8
             #ruler  12345678901234567890123456789012345678901234567890123456789012345678901234567890
-            printf "%s %-20.20s %9d %-11.11s %8d / %8d / %8d %s\n" "$sta" "${dif#*/}" $out "$tme" $dtabyt $eqlbyt $ovhbyt "$opt"
+            printf "%s %-20.20s %9d %-11.11s %8d / %8d / %8d %s\n" \
+              "$sta" "${dif#*/}" $out "$tme" $dtabyt $ovhbyt $eqlbyt "$opt"
           done
         fi
         org=$new

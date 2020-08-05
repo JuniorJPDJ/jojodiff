@@ -88,7 +88,7 @@ namespace JojoDiff {
 class JHashPos {
 public:
     /**
-     * Create a new hash-table with size not larger that the given size.
+     * @brief Create a new hash-table with size not larger that the given size.
      *
      * Actual size will be based on the highest prime below the highest power of 2
      * lower or equal to the specified size, e.g. aiSze=8192 will create a hashtable
@@ -100,16 +100,19 @@ public:
 
 	virtual ~JHashPos();
 
-	/* The hash function:
+	/* @brief The hash function
+	 *
 	 * Generate a new hash value by adding a new byte.
 	 * Old bytes are shifted out from the hash value in such a way that
 	 * the new value corresponds to a sample of 32 bytes (the lowest bit of the 32'th
 	 * byte still influences the highest bit of the hash value).
+	 *
+	 * @param   acNew       character to hash
+	 * @param   akCurHsh    hash key (in & out)
+	 * @param   aiEql       equal-chars count
 	 */
 	void hash ( int const acNew, hkey &akCurHsh, int const aiEql ) const {
-	    //alCurHsh =  (alCurHsh << 1) ^ aiCurVal  ;
 	    //akCurHsh =  (akCurHsh << 1) ^ acNew  ;
-	    //@akCurHsh =  (akCurHsh * 2) + acNew  ;     // faster
 	    akCurHsh =  (akCurHsh * 2) + acNew + aiEql ; // faster
 
 	    #if debug

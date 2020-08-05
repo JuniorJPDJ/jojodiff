@@ -177,7 +177,7 @@ bool JHashPos::get (const hkey akCurHsh, off_t &azPos)
 }
 
 /**
- * Print hashtable content (for debugging or auditing)
+ * @brief Print hashtable content (for debugging or auditing)
  */
 void JHashPos::print(){
     int liHshIdx;
@@ -191,7 +191,7 @@ void JHashPos::print(){
 }
 
 /**
- * Print hashtable distribution  (for debugging or auditing)
+ * @brief Print hashtable distribution  (for debugging or auditing)
  * @param azMax     Largest possible position to find
  * @param aiBck     Number of buckets
  */

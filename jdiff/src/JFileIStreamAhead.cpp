@@ -227,7 +227,7 @@ int JFileIStreamAhead::get_outofbuffer (
     }
 
 	/* Soft ahead: seek or overreading the buffer is not allowed */
-	if (aiSft == 2 && (liSek != 0 || (miBufUsd + miBlkSze > mlBufSze)))  {
+	if (aiSft == 2 && ((liSek != 0) || (azPos >= mzPosRed + mlBufSze - miBlkSze))) {
 		#if debug
 		if (JDebug::gbDbg[DBGRED])
 		  fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOB.\n",

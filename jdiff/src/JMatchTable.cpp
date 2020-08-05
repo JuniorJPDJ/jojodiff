@@ -38,9 +38,10 @@ namespace JojoDiff {
 #define EQLMAX 256
 
 // Fuzzy factor: for differences smaller than this number of bytes, take the longest looking sequence
+// Reason: control bytes consume byte to, so taking the longer one is better
 #define FZY 0
 
-// A run of EQLSZE may actually be longer, so give it a boost of 2
+// A run of EQLSZE may actually be longer, so give it a boost
 #define EQLBST 0
 
 // Inline functions
@@ -75,7 +76,11 @@ namespace JojoDiff {
 int JMatchTable::siHshRpr = 0;     /* Number of repaired hash hits (by comparing) */
 
 /* Construct a matching table for specified hashtable, original and new files. */
-JMatchTable::JMatchTable (JHashPos const * const cpHsh,  JFile  * const apFilOrg, JFile  * const apFilNew, const bool abCmpAll)
+JMatchTable::JMatchTable (
+    JHashPos const * const cpHsh,
+    JFile  * const apFilOrg,
+    JFile  * const apFilNew,
+    const bool abCmpAll)
 : mpHsh(cpHsh), mpFilOrg(apFilOrg), mpFilNew(apFilNew), mbCmpAll(abCmpAll)
 {
     // allocate table
@@ -93,11 +98,13 @@ JMatchTable::JMatchTable (JHashPos const * const cpHsh,  JFile  * const apFilOrg
     msMch[MCH_MAX - 1].ipNxt = null ;
     mpMchFre = msMch ;
 
+    // initialize the hashtable
     memset(mpMch, 0, MCH_PME * sizeof(tMch *));
 
     // initialize other values
     mpMchGld = null;
     mzGldDlt = 0 ;
+
 }
 
 /* Destructor */
@@ -166,47 +173,31 @@ int JMatchTable::add (
         }
     } /* for */
 
-    // soft-verify the new match
-    off_t lzTstNew = azRedNew ;                // start test at current read position
-    int liDst = azFndNewAdd - lzTstNew + 1 ;   // number of bytes to check before failing
-    if (liDst < SMPSZE) liDst = SMPSZE ;       // verify at least SMPSZE bytes
-
-    /* calculate the test position on the original file by applying izDlt */
-    off_t lzTstOrg =  lzTstNew + lzDlt ;
-    if (lzTstOrg < 0) {
-        lzTstNew -= lzTstOrg ;
-        lzTstOrg = 0 ;
-    }
-
-    /* check */
-    int liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll?1:2) ;
-    if (liCurCmp == 0){
-        // check failed, don't add to the table
-        if (azFndNewAdd >= azRedNew) siHshRpr++ ;
-        return 3 ;
-    }
-
     // create new match
     if (mpMchFre != null){
+        // soft-verify the new match
+        off_t lzTstNew = azRedNew ;                // start test at current read position
+        int liDst = azFndNewAdd - lzTstNew + 1 ;   // number of bytes to check before failing
+        if (liDst < SMPSZE) liDst = SMPSZE ;       // verify at least SMPSZE bytes
+
+        /* calculate the test position on the original file by applying izDlt */
+        off_t lzTstOrg =  lzTstNew + lzDlt ;
+        if (lzTstOrg < 0) {
+            lzTstNew -= lzTstOrg ;
+            lzTstOrg = 0 ;
+        }
+
+        /* check */
+        int liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll?1:2) ;
+        if (liCurCmp == 0){
+            // check failed, don't add to the table
+            if (azFndNewAdd >= azRedNew) siHshRpr++ ;
+            return 3 ;
+        }
+
         // remove from free-list
         lpCur = mpMchFre ;
         mpMchFre = mpMchFre->ipNxt ;
-
-        // fill out the form
-        lpCur->izOrg = azFndOrgAdd ;
-        lpCur->izNew = azFndNewAdd ;
-        lpCur->izBeg = azFndNewAdd ;
-        lpCur->izDlt = lzDlt ;
-        lpCur->iiCnt = 1 ;
-        lpCur->iiTyp = 0 ;
-        if (liCurCmp>0){
-            /* store result for later */
-            lpCur->izTst = lzTstNew ;
-            lpCur->iiCmp = liCurCmp ;
-        } else {
-            lpCur->izTst = -1 ;
-            lpCur->iiCmp = 0 ;
-        }
 
         // add to hashtable
         lpCur->ipNxt = mpMch[liIdx];
@@ -216,21 +207,67 @@ int JMatchTable::add (
         mpMchGld = lpCur ;
         mzGldDlt = lzDlt - 1 ;
 
+        // fill out the form
+        lpCur->izOrg = azFndOrgAdd ;
+        lpCur->izNew = azFndNewAdd ;
+        lpCur->izBeg = azFndNewAdd ;
+        lpCur->izDlt = lzDlt ;
+        lpCur->iiCnt = 1 ;
+        lpCur->iiTyp = 0 ;
+        if (liCurCmp == 0){
+            lpCur->izTst = -1 ;
+            lpCur->iiCmp = 0 ;
+        } else {
+            /* store heck result for later */
+            lpCur->izTst = lzTstNew ;
+            lpCur->iiCmp = liCurCmp ;
+
+            /* if this is a very good match, then reduce lookahead...*/
+            if (lzTstNew == azRedNew && liCurCmp >= EQLSZE) {
+                return 4;
+            }
+        }
+
         #if debug
         if (JDebug::gbDbg[DBGMCH])
-          fprintf(JDebug::stddbg, "Mch Add ("P8zd","P8zd") New ("P8zd","P8zd") Bse (%" PRIzd ")\n",
-                  azFndOrgAdd, azFndNewAdd, lpCur->izOrg, lpCur->izNew, azRedNew) ;
+          fprintf(JDebug::stddbg, "Mch Add ("P8zd","P8zd")  Bse (%" PRIzd ")\n",
+                  azFndOrgAdd, azFndNewAdd, azRedNew) ;
         #endif
 
         return (mpMchFre != null) ? 1 : 0 ; // still place or not ?
     } else {
         #if debug
-        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch ("P8zd", "P8zd") Ful\n", azFndOrgAdd, azFndNewAdd) ;
+        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch ("P8zd", "P8zd") Ful\n",
+                  azFndOrgAdd, azFndNewAdd) ;
         #endif
 
         return -1 ; // not added
     }
 } /* add() */
+
+/**
+* @brief   Calculate position on original file corresponding to given new file position.
+*
+* @param   rMch     *apCur    Match (in)
+* @param   off_t    azTstOrg  Position on org file (out only)
+* @param   off_t    azTstNew  Position on new file (in/out, adapted if azTstOrg would become negative)
+*/
+void JMatchTable::calcPosOrg(rMch *apCur, off_t &azTstOrg, off_t &azTstNew) const {
+    /* calculate the test position on the original file by applying izDlt */
+    if ((apCur->iiTyp < 0) && (azTstNew >= apCur->izBeg)){
+        // we're within a gliding match
+        azTstOrg = apCur->izOrg ;
+    } else {
+        // we're before a gliding match
+        // or on a colliding match
+        if (azTstNew + apCur->izDlt >= 0) {
+            azTstOrg = azTstNew + apCur->izDlt;
+        } else {
+            azTstNew -= azTstOrg ;
+            azTstOrg = 0 ;
+        }
+    }
+}
 
 /* -----------------------------------------------------------------------------
  * Get the best match from the array of matches
@@ -240,7 +277,7 @@ bool JMatchTable::get (
   off_t const &azRedNew,       // current read position on new file
   off_t &azBstOrg,             // best position found on original file
   off_t &azBstNew              // best position found on new file
-) const{
+) const {
     int liIdx ;             // index in mpMch
     int liDst ;             // distance: number of bytes to compare before failing
 
@@ -256,14 +293,14 @@ bool JMatchTable::get (
     off_t lzTstOrg ;    // test/found position in old file
 
     int liRlb = mpHsh->get_reliability() ;  // current unreliability range
-    //@if (liRlb < 1024) liRlb = 1024 ;     // increase the unreliabailty to a minimum //@ too high, reduce !
-    //@if (liRlb < 4096) liRlb = 4096 ;      // increase the unreliabailty to a minimum //@ too high, reduce !
 
-    // tuning parameters, don't understand why, should be improved
-    //@083f liOld=4096 / liFar=4096 / liMin=4096
+    //@ tuning parameters, don't understand why, this should be improved
     int liOld = max(liRlb, 1024);               //@ TODO range after which a match is considered old */
     int liFar = max(liRlb, 4096);               //@ TODO range after which a match is considered far */
     int liMin = max(liRlb, 1024);               //@ TODO minimum distance range */
+
+    bool lbCurTst=false ;
+    bool lbBstTst=false ;
 
     /* loop on the table of matches */
     for (liIdx = 0; liIdx < MCH_PME; liIdx ++) {
@@ -278,8 +315,8 @@ bool JMatchTable::get (
 
             // preselection: check if this match (lpCur) is potentially better than the current best match (lpBst)
             liCurCnt=-1;  // no preselection
-//@            if (lpBst==null){
-//                // no solution found yet, so take this one
+//            if (lpBst==null){
+//                // no solution found yet, so chech this one out
 //                liCurCnt = -1 ;
 //            } else {
 //                if (lpCur->izBeg - liFar < azBstNew + FZY)          // this match may be nearer, so check in more detail
@@ -293,41 +330,53 @@ bool JMatchTable::get (
 //                    liCurCnt = 0;
 //                }
 //            }
+//@            // preselection: don't check matches that cannot be selected (speed optimization)
+//            lbCurTst=false ;
+//            if (lpBst==null){
+//                // no solution found yet, so check this one out
+//                lbCurTst = true ;
+//            } else {
+//                if (lpCur->izBeg - liFar < azBstNew + FZY)          // this match may be nearer, so check in more detail
+//                {
+//                    if (azRedNew < azBstNew + FZY)
+//                        lbCurTst=true;                              // there's still room to improve: check this one out
+//                    else
+//                        liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;  // higher quality => potentially larger
+//                        lbCurTst = (liCurCnt > liBstCnt) ;
+//                } else {
+//                    // this one is too far away to improve on the current best match, so skip it
+//                    lbCurTst = false;
+//                }
+//            }
 
-            if (liCurCnt < 0 || liCurCnt > liBstCnt) {  // this one seems interesting, check it out
+            // this one seems interesting, check it out
+            if (liCurCnt < 0 || liCurCnt > liBstCnt) {
                 /* check if the match yields a solution on this position */
                 lzTstNew = azRedNew ;                              // start test at current read position
-                liDst = max(liMin, lpCur->izBeg - lzTstNew + 1) ;  // number of bytes to check before failing
 
                 /* calculate the test position on the original file by applying izDlt */
-                if ((lpCur->iiTyp < 0)){
-                    // we're on a gliding match
-                    if (lzTstNew >= lpCur->izBeg) {
-                        // within gliding match
-                        lzTstOrg = lpCur->izOrg ;
-                    } else {
-                        // before gliding match
-                        lzTstOrg = lzTstNew + lpCur->izDlt;
-                        if (lzTstOrg < 0) {
-                            lzTstNew -= lzTstOrg ;
-                            lzTstOrg = 0 ;
-                        }
-                    }
-                } else {
-                    // colliding match
-                    lzTstOrg =  lzTstNew + lpCur->izDlt ;
-                    if (lzTstOrg < 0) {
-                        lzTstNew -= lzTstOrg ;
-                        lzTstOrg = 0 ;
-                    }
-                } /* if else gliding/colliding match */
+                calcPosOrg(lpCur, lzTstOrg, lzTstNew);
+
+                /* number of bytes to check before failing */
+                liDst = max(liMin, lpCur->izBeg - lzTstNew + 1) ;
 
                 /* reuse earlier compare result ? */
-                if (lzTstNew <= lpCur->izTst){
-                    liCurCmp = lpCur->iiCmp ;
-                    lzTstOrg = lzTstOrg + (lpCur->izTst - lzTstNew) ;
-                    lzTstNew = lpCur->izTst ;
+                if (lzTstNew <= lpCur->izTst) {
+                      liCurCmp = lpCur->iiCmp ;
+                      lzTstOrg = lzTstOrg + (lpCur->izTst - lzTstNew) ;
+                      lzTstNew = lpCur->izTst ;
+                } else if (lzTstNew <= lpCur->izTst + lpCur->iiCmp){
+                    if (lpCur->iiCmp < EQLMAX) {
+                      // its still reusable
+                      liCurCmp = lpCur->iiCmp - (lzTstNew - lpCur->izTst) ;
+                    } else {
+                      // check again (can do better, but its complicated)
+                      liCurCmp = 0 ;
+                    }
                 } else {
+                  liCurCmp = 0 ;
+                }
+                if (liCurCmp == 0) {
                     /* compare */
                     liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll?1:2) ;
 
@@ -340,56 +389,63 @@ bool JMatchTable::get (
                     }
                 }
 
-                /* evaluate EOB */
+                /* Handle EOB */
                 if (liCurCmp < 0){
-                    // if EOB was reached soon and iiCnt is large, then this may still be a good match
+                    // EOB was reached, so rely on info from the hashtable: iiCnt, izBeg and izNew
                     if (liCurCnt < 0)
                         liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
-                    if (-liCurCmp + liRlb > liDst       // EOB reached soon
-                        && liCurCnt > 4 ) {             // Confirmed match
-                        liCurCmp=2;                     // Maybe there's a solution there
-                    } else if (liCurCnt > 8) {
-                        liCurCmp=1;
-                    } else {
-                        liCurCmp = 0;                   // If there's a solution its far and uncertain
+
+                    if (liCurCnt < 2){
+                        //  a non-confirmed match is too risky
+                    } else if (lzTstNew <= lpCur->izBeg) {
+                        // We're still before the first detected match,
+                        // so a potential solution probably starts at given match
+                        lzTstNew = lpCur->izBeg ;
+                        liCurCmp = liCurCnt ;
+                    } else if (lzTstNew <= lpCur->izNew) {
+                        // We're in between the first and last detected match,
+                        // prorate liCurCmp
+                        liCurCmp = liCurCnt * (lzTstNew - lpCur->izBeg)
+                                      / (lpCur->izNew - lpCur->izBeg) ;
+                    }
+                    if (liCurCmp > 0){
+                        // reduce hashtable match, real compares are better
+                        liCurCmp /= 2 ;
+
+                        // calculate corresponding lzPosOrg
+                        calcPosOrg(lpCur, lzTstOrg, lzTstNew) ;
                     }
                 }
 
                 /* evaluate: keep the best solution */
                 if (liCurCmp > 0){
-//@                    if (lpBst == NULL)
-//                        lpBst=lpCur ;                       // first found: take lpCur
-//                    else if (lzTstNew - liCurCmp <= azBstNew - liBstCmp)
-//                        // new match is closer or longer
-//                        lpBst=lpCur ;
-//                    else if (lzTstNew - liCurCmp == azBstNew - liBstCmp) {
-//                        // take the one with most confirmations
-//                        if (liCurCnt < 0)
-//                                liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
-//                        if (liCurCnt > liBstCnt)
-//                            lpBst=lpCur ;
-//                    }
                     if (lpBst == NULL)
-                        lpBst=lpCur ;                       // first found: take lpCur
+                        // first one, take it
+                        lpBst=lpCur ;
                     else if (lzTstNew + FZY < azBstNew)
-                        lpBst=lpCur ;                       // lpCur is nearer: take it lpCur
-                    else if (lzTstNew <= azBstNew + FZY) {  // maybe nearer: check in more detail
-                        if (liCurCmp > liBstCmp)
-                            lpBst=lpCur ;                   // better compare result: more equal bytes
-                        else if (liCurCmp == liBstCmp) {
+                        // new one is clearly better (nearer)
+                        lpBst=lpCur ;
+                    else if (lzTstNew <= azBstNew + FZY) {
+                        // maybe better (nearer): check in more detail
+                        if (lzTstNew - liCurCmp < azBstNew - liBstCmp) {
+                            // new one is longer
+                            lpBst=lpCur ;
+                        } else if (lzTstNew - liCurCmp == azBstNew - liBstCmp) {
+                            // If all is equal, then rely on the hash counter
                             if (liCurCnt < 0)
                                 liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
                             if (liCurCnt > liBstCnt)
-                                lpBst=lpCur ;               // higher quality
-                            else ;   // don't take ;
-                        } else ;  // don't take
-                    } else ;  // don't take
+                                // higher hash-match counter = probably longer
+                                lpBst=lpCur ;
+                        }
+                    }
 
                     if (lpBst==lpCur){
                         azBstNew = lzTstNew ;
                         azBstOrg = lzTstOrg ;
                         liBstCnt = liCurCnt ;
                         liBstCmp = liCurCmp ;
+                        lbBstTst = lbCurTst ;
                         if (liCurCnt < 0)
                             liBstCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
                         else
@@ -400,12 +456,13 @@ bool JMatchTable::get (
                 /* show table */
                 #if debug
                 if (JDebug::gbDbg[DBGMCH])
-                    fprintf(JDebug::stddbg, "Mch %2d%c[%c"P8zd","P8zd","P8zd",%4d]"P8zd":%" PRIzd ":%d\n",
-                            liCurCmp,
-                            (lpBst == lpCur)?'*': (liCurCmp == 0)?'=': (liCurCmp==1)?'?':':',
-                                            (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
-                                                    lpCur->izOrg, lpCur->izNew, lpCur->izBeg, lpCur->iiCnt,
-                                                    lzTstNew, lpCur->izDlt, liDst) ;
+                    fprintf(JDebug::stddbg,
+                        "Mch %5d %c [%c" P8zd "<" P8zd ">" P8zd ":" P8zd ":%4d]" P8zd ":%" PRIzd "\n",
+                        liCurCmp,
+                        (lpBst == lpCur)?'*':(lbCurTst)?' ':'-',
+                        (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
+                        lpCur->izOrg, lpCur->izDlt, lpCur->izNew, lpCur->izBeg, lpCur->iiCnt,
+                        lzTstNew, liDst) ;
                 #endif
             } else {
                 /* show table */
@@ -425,6 +482,9 @@ bool JMatchTable::get (
     if (JDebug::gbDbg[DBGMCH])
         if (lpBst == null)
             fprintf(JDebug::stddbg, "Mch Err\n") ;
+
+    //if (! lbBstTst)
+       //   fprintf(JDebug::stddbg, "Preselection failed !\n") ;
     #endif
 
     return (lpBst != null);
@@ -507,8 +567,8 @@ int JMatchTable::check (
     off_t &azPosOrg, off_t &azPosNew,
     int aiLen, int aiSft
 ) const {
-    int lcOrg ;
-    int lcNew ;
+    int lcOrg=0 ;
+    int lcNew=0 ;
     int liEql=0 ;
     //int liMaxEql=0;
     //int liMaxPos=0;
@@ -521,7 +581,7 @@ int JMatchTable::check (
     #endif
 
     /* Compare bytes */
-    for ( ; aiLen > 0 && liEql < EQLSZE; aiLen--)
+    for ( ; liEql < EQLMAX; aiLen--)
     {
         if ((lcOrg = mpFilOrg->get(azPosOrg ++, aiSft)) < 0)
             break;
@@ -532,21 +592,12 @@ int JMatchTable::check (
         else if (liEql > EQLMIN) {
             azPosOrg -- ;
             azPosNew -- ;
-            //@ fprintf(JDebug::stddbg, "Check %" PRIzd " %" PRIzd " %d\n", azPosOrg, azPosNew, liEql);
             break ;
-        }
-        else
+        } else {
             liEql = 0;
-    }
-
-    /* Continue comparing equals */
-    while (lcNew == lcOrg && lcOrg > EOF && liEql < EQLMAX) {
-        if ((lcOrg = mpFilOrg->get(azPosOrg ++, aiSft)) < 0)
-            break;
-        else if ((lcNew = mpFilNew->get(azPosNew ++, aiSft)) < 0)
-            break;
-        else if (lcOrg == lcNew)
-            liEql ++ ;
+            if (aiLen <= 0)
+                break ;
+        }
     }
 
     #if debug
@@ -558,21 +609,19 @@ int JMatchTable::check (
                      (lcNew>=32 && lcNew <= 127)?lcNew:' ',(unsigned char)lcNew);
     #endif
 
-    #if EQLBST > 0
-    if (liEql == EQLSZE){
-        // Solution may be longer, so give it a boost
-        azPosOrg -= liEql ;
-        azPosNew -= liEql ;
-        return  EQLSZE + EQLBST ;
-    } else
-    #endif // EQLBST
     if (liEql > EQLMIN){
         azPosOrg -= liEql ;
         azPosNew -= liEql ;
-        return  liEql ;
-    }
-    else if (lcOrg == EOB || lcNew == EOB){
-        return -aiLen ; // EOB reached
+        #if EQLBST > 0
+        if (liEql >= EQLMAX)
+            return  EQLSZE + EQLBST ;
+        else if (lcOrg == EOB || lcNew == EOB)
+            return  EQLSZE + EQLBST / 2 ;
+        else
+        #endif // EQLBST
+            return  liEql ;
+    } else if (lcOrg == EOB || lcNew == EOB){
+        return -aiLen  ; // EOB reached
     } else {
         // No equal bytes found
         return 0 ;

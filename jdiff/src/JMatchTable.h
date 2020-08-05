@@ -26,8 +26,10 @@
 #include "JFile.h"
 #include "JHashPos.h"
 
-#define MCH_PME 127                     // Matching hashtable prime
-#define MCH_MAX 256                     // Maximum size of matching table
+//@#define MCH_PME 127                     // Matching hashtable prime
+//@#define MCH_MAX 256                     // Maximum size of matching table
+#define MCH_PME 1021                     // Matching hashtable prime
+#define MCH_MAX 1024                     // Maximum size of matching table
 
 namespace JojoDiff {
 
@@ -73,8 +75,26 @@ public:
 	int cleanup ( off_t const &czBseNew ) ;
 
 private:
+    /**
+    * Matchtable strcuture
+    */
+ 	typedef struct tMch {
+	    struct tMch *ipNxt ;    /* next element in collision list */
+
+	    int iiCnt ;             // number of colliding matches (= confirming matches)
+	    int iiTyp ;             // type of match:  0=unknown, 1=colliding, -1=gliding
+	    off_t izBeg ;           // first found match (new file position)
+	    off_t izNew ;           // last  found match (new file position)
+	    off_t izOrg ;           // last  found match (org file position)
+	    off_t izDlt ;           // delta: izOrg = izNew + izDlt
+	    off_t izTst ;           // result of last compare
+	    int iiCmp ;             // result of last compare
+	} rMch ;
+
+
 	/**
-	 * Verify and optimize matches:
+	 * @brief Verify and optimize matches
+	 *
      * Searches at given positions for a run of 8 equal bytes.
      * Searching continues for the given length unless soft-reading is specified
      * and the end-of-buffer is reached.
@@ -94,6 +114,16 @@ private:
 	    int aiLen, int aiSft
 	    ) const ;
 
+    /**
+    * @brief   Calculate position on original file corresponding to given new file position.
+    *
+    * @param   rMch     *apCur    Match (in)
+    * @param   off_t    azTstOrg  Position on org file (out only)
+    * @param   off_t    azTstNew  Position on new file (in/out, adapted if azTstOrg would become negative)
+    */
+    void calcPosOrg(rMch *apCur, off_t &azTstOrg, off_t &azTstNew) const ;
+
+
 	/*
 	 * Context: we need the hashtable and the two source files
 	 */
@@ -104,19 +134,6 @@ private:
 	/*
 	 * Matchtable elements
 	 */
-	typedef struct tMch {
-	    struct tMch *ipNxt ;    /* next element in collision list */
-
-	    int iiCnt ;             // number of colliding matches (= confirming matches)
-	    int iiTyp ;             // type of match:  0=unknown, 1=colliding, -1=gliding
-	    off_t izBeg ;           // first found match (new file position)
-	    off_t izNew ;           // last  found match (new file position)
-	    off_t izOrg ;           // last  found match (org file position)
-	    off_t izDlt ;           // delta: izOrg = izNew + izDlt
-	    off_t izTst ;           // result of last compare
-	    int iiCmp ;             // result of last compare
-	} rMch ;
-
 	rMch *msMch ;               /* table of matches */
 	rMch *mpMch[MCH_PME];       /* hastable on izDlt with matches       */
 	rMch *mpMchFre ;            /* freelist of matches (iiCnt == -1)    */
