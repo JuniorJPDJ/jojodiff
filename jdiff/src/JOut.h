@@ -27,7 +27,7 @@
 namespace JojoDiff {
 
 /**
- * Abstract JDiff output class.
+ * @brief Abstract JDiff output class.
  */
 class JOut {
 public:

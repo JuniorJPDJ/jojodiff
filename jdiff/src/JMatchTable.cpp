@@ -98,8 +98,6 @@ JMatchTable::JMatchTable (
     // allocate and initialize the hashtable
     miMchPme = getLowerPrime(aiMchSze) * 2;
     mpMch = (tMch **) calloc(miMchPme, sizeof(tMch *));
-    //@Mch = (tMch **) malloc(miMchPme * sizeof(tMch *));
-    //@memset(mpMch, 0, miMchPme * sizeof(tMch *));
 
     // initialize other values
     mpMchGld = null;
@@ -195,7 +193,7 @@ int JMatchTable::add (
             // check failed, don't add to the table
             if (azFndNewAdd >= azRedNew) siHshRpr++ ;
             return 3 ;
-        } //@TODO handle EOB (negative values)
+        }
 
         // remove from free-list
         if (mpMchFre != null){
@@ -370,9 +368,6 @@ bool JMatchTable::getbest (
     off_t lzTstOrg ;        // test/found position in old file
 
     int liRlb = mpHsh->get_reliability() ;  // current unreliability range
-
-    //@ tuning parameters, don't understand why, this should be improved
-    //int liMin = max(liRlb, 1024);  //@ TODO minimum distance range */
 
     #ifdef debug
     int liRlbMax=0;     // measured reliability distance

@@ -13,11 +13,19 @@ optlst=("-vv -bb" "-vv --better" "-vv" "-vv --lazy" "-vv -ff" \
   "-vvck 1024")
 
 # default options
-optdef=("-vv -bb" "-vv --better" "-vv" "-vv --lazy" "-vv -ff")
+optdef=("-vv -bb" "-vv --better -s" "-vv" "-vvs" "-vv --lazy" "-vv -ff")
+
+# pairwise testing
+optpw1=("-v" "-vv" "-vvv" "-v -c" "-s" "-a 783 -v" "-v -a 6248")   # 7, must be prime !
+optpw3=("" "-b" "-bb" "-f" "-ff")                                  # 5, must be prime !
+optpw2=("" "-k 0" "-k 8192" "-k 7311")
+optpw4=("" "-n 1 -x 2" "-n 16 -x 3123" )
+optpw5=("" "-m 0" "-m 7" "-m 37" "-p" "-q" "-p -q")
+
 
 if [[ $# -lt 3 ]]
 then
-    echo 'usage: jtst <jdiff-exe> <jpatch-exe> [bat] [lst | all | fil | tar] <dir> [allopts | defs | stats | <opts1> <opts2> ...]'
+    echo 'usage: jtst <jdiff-exe> <jpatch-exe> [bat] [lst | all | fil | tar] <dir> [allopts | defs | stats | pw | <opts1> <opts2> ...]'
     echo "  w32=generate cmd-file for windows"
     echo "  lst=predefined list: ${orglst[@]}"
     echo "  all=all files in dir"
@@ -96,6 +104,22 @@ xdelta=$(which xdelta3)
           "-n 0 -x 0" "-n 1 -x 1" "-n 8 -x 16" "-n 500 -x 2000" \
           "-a 512" "-a 0" "-a 4096" "-a 65565" \
         )
+    elif [[ "$1" == "pw" ]] ; then
+      # Generate pseudo-pairwise options
+      optlst=("")
+      for ((i=0; i<${#optpw1[@]}; i++)); do    # 1 to 7
+        for ((j=0; j<${#optpw2[@]}; j++)); do  # 1 to 5
+          x="${optpw1[$i]} ${optpw2[$j]}"
+          ((m=i     % ${#optpw3[@]})) && x="$x ${optpw3[$m]}"
+          ((k=j     % ${#optpw4[@]})) && x="$x ${optpw4[$j]}"
+          ((l=(i+j) % ${#optpw5[@]})) && x="$x ${optpw5[$l]}"
+          x="${x//  / }"
+          optlst+=("$x")
+          echo ">$x"
+        done
+      done
+      echo "Total number of options to test: ${#optlst[@]}"
+      read -p "Continue in 15 seconds, or ctrl-c to abort... " -t 16 x
     else 
       optlst=("$@")
     fi
@@ -104,12 +128,11 @@ xdelta=$(which xdelta3)
   #ruler   ---------1---------2---------3---------4---------5---------6---------7---------8
   #ruler   12345678901234567890123456789012345678901234567890123456789012345678901234567890
   echo -e "HDR JDF-file                  SIZE TIME            DATA /    OVH   /    EQL   OPTIONS"
+  lng=0
   lst=$(ls $dir | sed -e 's/\..*$//' | uniq | uniq )
-  for bse in $lst
-  do
+  for bse in $lst; do
     org=""
-    for new in $dir/$bse.$ext
-    do
+    for new in $dir/$bse.$ext; do
       if [[ ${new##*.} != "jdf" && ${new##*.} != "xdf" && ${new##*.} != "gz" && ${new##*.} != "tst" ]]
       then
         if [[ $org != "" ]]
@@ -146,6 +169,53 @@ xdelta=$(which xdelta3)
           do
             opt=${optlst[optind]}
             dif=${new%.*}.$(printf %02d $optind).jdf
+
+            # Switch between long/short options
+            if [[ $lng == 1 ]]; then
+              lng=0
+              opt="${opt/-v /--verbose }"
+              opt="${opt/-vv/--verbose -v}"
+              opt="${opt/-f /--lazy }"
+              opt="${opt/-ff/--lazy -f}"
+              opt="${opt/-b /--better }"
+              opt="${opt/-bb/--better -b}"
+              opt="${opt/-k /--block-size }"
+              opt="${opt/-x /--search-max }"
+            fi
+            if [[ $lng == 2 ]]; then
+              lng=1
+              opt="${opt//-v /--verbose }"
+              opt="${opt//-vv /--verbose -verbose }"
+              opt="${opt//-f /--lazy }"
+              opt="${opt//-ff/--lazy -f}"
+              opt="${opt//-b /--better }"
+              opt="${opt//-bb /--better --better }"
+              opt="${opt//-c /--console }"
+              opt="${opt/-n /--search-min }"
+            fi
+            if [[ $lng == 3 ]]; then
+              opt="${opt//-v /--verbose }"
+              opt="${opt//-vv /--verbose -v }"
+              opt="${opt//-f /--lazy }"
+              opt="${opt//-ff /--lazy -f }"
+              opt="${opt//-b /--better }"
+              opt="${opt//-bb /--better -b }"
+              opt="${opt//-p /--sequential-source }"
+              opt="${opt//-q /--sequential-dest }"
+              lng=2
+            fi
+            if [[ $lng == 4 ]]; then
+              # Put them all together
+              opt="$(echo "$opt"|sed -e 's/-\([^0-9 ]*\) *-\([^0-9 ]*\)/-\1\2/g' \
+                                     -e 's/-\([^0-9 ]*\) *-\([^0-9 ]*\)/-\1\2/g')"
+              lng=3
+            fi
+            if [[ $lng == 0 ]]; then
+              lng=4
+            fi
+            #echo ":$opt"
+            #continue
+
             echo "------------------------------------------------------------"
             echo "$(date) $jdiff $opt $org $new $dif"
             #(time nice -n 20 $jdiff $opt $org $new $dif 2>$TEMP/jdiff.out) 2>$TEMP/jtst.out

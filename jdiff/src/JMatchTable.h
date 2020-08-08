@@ -92,7 +92,7 @@ public:
      * @param       azBseNew    Cleanup all mathes before this position
      *
      * @return < 0  Negated number valid matches: one of the matches meets azBseNew
-     *         > 0  Number of valid matches
+     * @return > 0  Number of valid matches
      * ---------------------------------------------------------------------------*/
     int cleanup ( off_t const azRedNew, int const liBck );
 
@@ -101,16 +101,16 @@ private:
     * Matchtable strcuture
     */
  	typedef struct tMch {
-	    struct tMch *ipNxt ;    /* next element in collision list */
+	    struct tMch *ipNxt ;    /**< next element in collision list */
 
-	    int iiCnt ;             // number of colliding matches (= confirming matches)
-	    int iiTyp ;             // type of match:  0=unknown, 1=colliding, -1=gliding
-	    off_t izBeg ;           // first found match (new file position)
-	    off_t izNew ;           // last  found match (new file position)
-	    off_t izOrg ;           // last  found match (org file position)
-	    off_t izDlt ;           // delta: izOrg = izNew + izDlt
-	    off_t izTst ;           // result of last compare
-	    int iiCmp ;             // result of last compare
+	    int iiCnt ;             /**< number of colliding matches (= confirming matches) */
+ 	    int iiTyp ;             /**< type of match:  0=unknown, 1=colliding, -1=gliding */
+	    off_t izBeg ;           /**< first found match (new file position)              */
+	    off_t izNew ;           /**< last  found match (new file position)              */
+	    off_t izOrg ;           /**< last  found match (org file position)              */
+	    off_t izDlt ;           /**< delta: izOrg = izNew + izDlt                       */
+	    off_t izTst ;           /**< result of last compare                             */
+	    int iiCmp ;             /**< result of last compare                             */
 	} rMch ;
 
 
@@ -155,22 +155,22 @@ private:
 	/*
 	 * Matchtable elements
 	 */
-	rMch *msMch ;               /*< table of matches (dynamic array)                    */
-	rMch **mpMch ;              /*< hastable on izDlt with matches (dynamic array)      */
-	rMch *mpMchFre ;            /*< freelist of matches                                 */
-    rMch *mpMchGld ;            /*< last gliding match                                  */
-    rMch *mpMchBst ;            /*< found best match                                    */
-    off_t mzGldDlt ;            /*< last gliding match next delta                       */
-    int miMchFre ;              /*< free index (0 at start)                             */
+	rMch *msMch ;               /**< table of matches (dynamic array)                    */
+	rMch **mpMch ;              /**< hastable on izDlt with matches (dynamic array)      */
+	rMch *mpMchFre ;            /**< freelist of matches                                 */
+    rMch *mpMchGld ;            /**< last gliding match                                  */
+    rMch *mpMchBst ;            /**< found best match                                    */
+    off_t mzGldDlt ;            /**< last gliding match next delta                       */
+    int miMchFre ;              /**< free index (0 at start)                             */
 
 	/* settings */
-	int  miMchSze ;             /* Size of the matching table                       */
-	int  miMchPme ;             /* Size of matching hashtable                       */
-	bool mbCmpAll ;             /* Compare all matches, even if data not in buffer? */
+	int  miMchSze ;             /**< Size of the matching table                       */
+	int  miMchPme ;             /**< Size of matching hashtable                       */
+	bool mbCmpAll ;             /**< Compare all matches, even if data not in buffer? */
 
 public:
 	/* statistics */
-	static int siHshRpr;        /* Number of repaired hash hits (by compare)         */
+	static int siHshRpr;        /**< Number of repaired hash hits (by compare)         */
 };
 
 }

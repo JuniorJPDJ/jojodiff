@@ -34,17 +34,17 @@
 #if debug
 #define AreWeHere fprintf(stderr, "test\n") ; fflush(stderr) ;
 
-#define DBGHSH 0  // Debug Hash                     -dhsh
-#define DBGAHD 1  // Debug Ahead                    -dahd
-#define DBGCMP 2  // Debug Compare                  -dcmp
-#define DBGPRG 3  // Debug Progress                 -dprg
-#define DBGBUF 4  // Debug Ahead Buffer             -dbuf
-#define DBGAHH 5  // Debug Ahead Hash               -dahh
-#define DBGHSK 6  // Debug ufHshNxt                 -dahh
-#define DBGBKT 7  // Debug ufFabSek                 -dbkt
-#define DBGRED 8  // Debug ufFabGet                 -dred
-#define DBGMCH 9  // Debug ufMch...                 -dmch
-#define DBGDST 10 // Debug Hashtable distribution   -ddst
+#define DBGHSH 0  /**< Debug Hash                     -dhsh */
+#define DBGAHD 1  /**< Debug Ahead                    -dahd */
+#define DBGCMP 2  /**< Debug Compare                  -dcmp */
+#define DBGPRG 3  /**< Debug Progress                 -dprg */
+#define DBGBUF 4  /**< Debug Ahead Buffer             -dbuf */
+#define DBGAHH 5  /**< Debug Ahead Hash               -dahh */
+#define DBGHSK 6  /**< Debug ufHshNxt                 -dahh */
+#define DBGBKT 7  /**< Debug ufFabSek                 -dbkt */
+#define DBGRED 8  /**< Debug ufFabGet                 -dred */
+#define DBGMCH 9  /**< Debug ufMch...                 -dmch */
+#define DBGDST 10 /**< Debug Hashtable distribution   -ddst */
 #else
 #define AreWeHere ;
 #endif

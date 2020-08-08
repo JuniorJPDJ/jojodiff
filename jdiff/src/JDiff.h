@@ -253,11 +253,10 @@ private:
 	  off_t &azAhd                  /* number of bytes to go before similarity is reached */
 	);
 
-    /** Scans the original file and fills up the hashtable. */
+    /**
+     * @brief Scans the original file and fills up the hashtable.
+     */
     int ufFndAhdScn () ;
-
-    /** Hashes the next byte from specified file. */
-    //@void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) const ;
 
 public:
     /*

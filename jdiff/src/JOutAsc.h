@@ -29,9 +29,13 @@
 
 namespace JojoDiff {
 
+/**
+ *@brief Simple ascii output function for visualisation
+ */
 class JOutAsc: public JOut {
 public:
     JOutAsc(FILE *apFilOut );
+
     virtual ~JOutAsc();
 
     virtual bool put (

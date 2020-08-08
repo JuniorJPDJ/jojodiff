@@ -29,9 +29,9 @@ JOutAsc::JOutAsc(FILE *apFilOut ) : mpFilOut(apFilOut){
 JOutAsc::~JOutAsc() {
 }
 
-/* ---------------------------------------------------------------
- * ufOutBytAsc: simple ascii output function for visualisation
- * ---------------------------------------------------------------*/
+/**
+ *@brief ufOutBytAsc: simple ascii output function for visualisation
+ */
 bool JOutAsc::put (
   int   aiOpr,
   off_t azLen,

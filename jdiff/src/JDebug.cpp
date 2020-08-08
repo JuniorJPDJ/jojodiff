@@ -27,5 +27,5 @@ FILE *JDebug::stddbg = stderr ;
 
 #if debug
 #warning DEBUG code included !
-int JDebug::gbDbg[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+int JDebug::gbDbg[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};    /**< Debug flags */
 #endif

@@ -23,6 +23,9 @@
 
 namespace JojoDiff {
 
+/**
+*@brief Regrouped ascii output function for visualisation
+*/
 JOutRgn::JOutRgn( FILE *apFilOut ) : mpFilOut(apFilOut){
 }
 

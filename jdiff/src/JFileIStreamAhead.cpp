@@ -137,7 +137,6 @@ int JFileIStreamAhead::get_frombuffer (
     const int aiSft        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
 	uchar *lpDta ;
-//@	bool liSek=0 ;	/* reposition on file ? 0=no, 1=yes, 2=scroll back */
 
 	/* Get data from buffer? */
 	if (azPos < mzPosInp) {
@@ -331,7 +330,7 @@ int JFileIStreamAhead::get_fromfile (
         fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOF.\n",
           msFid, azPos, aiSft);
       #endif
-      // TODO reduce number of times we pass here, init mzPosEof to MAX_OFF_T
+
       // Reset EOF state
       if (mpStream->eof())
           mpStream->clear();
@@ -372,6 +371,7 @@ int JFileIStreamAhead::get_fromfile (
             /* Advance input position */
             mzPosInp += liDne ;
             mpInp    += liDne ;
+
             // Cycle buffer
             if ( mpInp == mpMax ){
               mpInp = mpBuf ;

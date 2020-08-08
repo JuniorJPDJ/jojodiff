@@ -88,8 +88,8 @@
 #endif
 #pragma message "INFO: PRIzd = " XSTR(PRIzd)
 
-#define PGSMRK 0x100000        // Progress mark: show progress in Mb (1024 * 1024 or 0x400 x 0x400)
-#define PGSMSK 0x1ffffff       // Progress mask: show progress every 32Mb when (lzPos & PGSMSG == 0)
+#define PGSMRK 0x100000    /**< Progress mark: show progress in Mb (1024 * 1024 or 0x400 x 0x400)  */
+#define PGSMSK 0x1ffffff   /**< Progress mask: show progress every 32Mb when (lzPos & PGSMSG == 0) */
 
 namespace JojoDiff {
 
@@ -128,8 +128,8 @@ JDiff::~JDiff() {
 	delete gpMch ;
 }
 
-/*******************************************************************************
-* Difference function
+/**
+* @brief Difference function
 *
 * Takes two files as arguments and writes out the differences
 *
@@ -140,26 +140,28 @@ JDiff::~JDiff() {
 *   - first insert or delete the specified number of bytes,
 *   - then continue reading on both files until equal blocks are reached,
 *
-*******************************************************************************/
+* @return 0    all ok
+* @return < 0  error: see EXIT-codes
+*/
 int JDiff::jdiff()
 {
-    int lcOrg;              /* byte from original file */
-    int lcNew;              /* byte from new file */
-    off_t lzPosOrg = 0 ;    /* position in original file */
-    off_t lzPosNew = 0 ;    /* position in new file */
+    int lcOrg;              /**< byte from original file */
+    int lcNew;              /**< byte from new file */
+    off_t lzPosOrg = 0 ;    /**< position in original file */
+    off_t lzPosNew = 0 ;    /**< position in new file */
 
-    bool  lbEql = false;    /* accumulate equal bytes? */
-    off_t lzEql = 0;        /* accumulated equal bytes */
+    bool  lbEql = false;    /**< accumulate equal bytes? */
+    off_t lzEql = 0;        /**< accumulated equal bytes */
 
-    int liFnd = 0;          /* offsets are pointing to a valid solution (= equal regions) ?   */
-    off_t lzAhd=0;          /* number of bytes to advance on both files to reach the solution */
-    off_t lzSkpOrg=0;       /* number of bytes to skip on original file to reach the solution */
-    off_t lzSkpNew=0;       /* number of bytes to skip on new      file to reach the solution */
-    off_t lzLap=0;          /* lap for reducing number of progress messages for -vv           */
+    int liFnd = 0;          /**< offsets are pointing to a valid solution (= equal regions) ?   */
+    off_t lzAhd=0;          /**< number of bytes to advance on both files to reach the solution */
+    off_t lzSkpOrg=0;       /**< number of bytes to skip on original file to reach the solution */
+    off_t lzSkpNew=0;       /**< number of bytes to skip on new      file to reach the solution */
+    off_t lzLap=0;          /**< lap for reducing number of progress messages for -vv           */
 
-//@#if debug
-//@    int liErr=0 ;		    /* check for misses : 0=not checking, 1=checking, 2=miss detected */
-//@#endif
+    #if debug
+    int liErr=0 ;		    /**< check for misses : 0=not checking, 1=checking, 2=miss detected */
+    #endif
 
     if (miVerbse > 0) {
       fprintf(JDebug::stddbg, "Comparing : ...           ");
@@ -358,9 +360,7 @@ int JDiff::ufFndAhd (
 
     /* Start with hard lookahead unless the minimum number of matches to find is 0 */
     liSftOrg = ((miMchMin == 0) ? 2 : 1) ;
-
-    /* Start with hard lookahead on new file */
-    liSftNew = 2 ;
+    liSftNew = ((miMchMin == 0) ? 2 : 1) ;
 
     /* Prescan the source file to build the hashtable */
     switch (miSrcScn) {
@@ -498,13 +498,8 @@ int JDiff::ufFndAhd (
 
         // Start with soft or hard reading */
         if (liFnd >= miMchMin){
-            // If there's still a "large" number of matches,
-            // then the previous search did not return a good result.
-            // Try harder, but be soft
-            //liFnd = liFnd - (MCH_MAX - liFnd) ;  // can't reduce more
-            //if (liFnd < miMchMin)
-            //    liFnd=miMchMin ;
-            //@liSftNew = 2 ;
+            liSftOrg = 1 ; //@ 083s
+            liSftNew = 2 ; //@ 083s
         }
 
         /*
@@ -571,7 +566,7 @@ int JDiff::ufFndAhd (
         /*
         * Build the table of matches
         */
-        while ((liMax > 0)) { //@ && (miValNew > EOF )) {
+        while ((liMax > 0)) {
             /* hash the new value */
             miValNew = mpFilNew->get(++ mzAhdNew, liSftNew) ;
             if (miValNew <= EOF)
@@ -643,15 +638,11 @@ int JDiff::ufFndAhd (
                 } /* if usable */
             } /* lookup */
 
-          /* get next value from file */
-          //@ufFndAhdGet(mpFilNew, ++ mzAhdNew, miValNew, miEqlNew, liSftNew) ;
-          //@liMax -- ;
-
-          /* show progress */
-          if ((miVerbse > 1) && (lzLap <= mzAhdNew)) {
-            fprintf(JDebug::stddbg, "+%-12" PRIzd "\b\b\b\b\b\b\b\b\b\b\b\b\b", (mzAhdNew - azRedNew) / PGSMRK);
-            lzLap=lzLap+PGSMRK;
-          }
+            /* show progress */
+            if ((miVerbse > 1) && (lzLap <= mzAhdNew)) {
+              fprintf(JDebug::stddbg, "+%-12" PRIzd "\b\b\b\b\b\b\b\b\b\b\b\b\b", (mzAhdNew - azRedNew) / PGSMRK);
+              lzLap=lzLap+PGSMRK;
+            }
         } /* while ! EOF */
     } /* if liFnd <= miMchMax */
 
@@ -683,7 +674,7 @@ int JDiff::ufFndAhd (
         // for the part covered by the (un)reliability range.
         azSkpOrg = 0 ;
         azSkpNew = 0 ;
-        azAhd    = (mzAhdNew - azRedNew) ; //@ - gpHsh->get_reliability() ; // - SMPSZE * 2 ;
+        azAhd    = (mzAhdNew - azRedNew) ; //@ - gpHsh->get_reliability() ; //@ - SMPSZE * 2 ;
         if (azAhd < SMPSZE)
             azAhd = SMPSZE ;
         return 0 ;

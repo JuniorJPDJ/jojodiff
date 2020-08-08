@@ -47,6 +47,10 @@ JFileAhead::JFileAhead(FILE * apFil, const char *asFid, const long alBufSze, con
     miRedSze = 0 ;
     msFid = asFid ;
 
+    // Block size cannot be larger than buffer size
+    if (miBlkSze > mlBufSze)
+        miBlkSze=mlBufSze ;
+
 #if debug
     if (JDebug::gbDbg[DBGBUF])
         fprintf(JDebug::stddbg, "ufFabOpn(%s):(buf=%p,max=%p,sze=%ld)\n",
@@ -64,11 +68,33 @@ JFileAhead::~JFileAhead() {
 long JFileAhead::seekcount(){return mlFabSek; }
 
 /**
+ * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+ *
+ * Attention: the base will be implicitly changed by get on non-buffered reads too !
+ *
+ * @param   azBse	base position
+ */
+void JFileAhead::set_lookahead_base (
+    const off_t azBse	/* new base position for soft lookahead */
+) {
+    mzPosBse = azBse ;
+}
+
+/**
+ * For buffered files, return the position of the buffer
+ *
+ * @return  -1=no buffering, > 0 : first position in buffer
+ */
+ off_t JFileAhead::getBufPos() {
+    return mzPosInp - miBufUsd ;
+};
+
+/**
  * Gets one byte from the lookahead file.
  */
 int JFileAhead::get (
     const off_t &azPos, /* position to read from                */
-    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+    const int aiSft     /* 0=read, 1=hard ahead, 2=soft ahead   */
 ) {
     if ((miRedSze > 0) && (azPos == mzPosRed)) {
         mzPosRed++ ;
@@ -76,11 +102,11 @@ int JFileAhead::get (
         #if debug
         if (JDebug::gbDbg[DBGRED])
           fprintf(JDebug::stddbg, "ufFabGet(%s,"P8zd",%d)->%2x (mem %p).\n",
-             msFid, azPos, aiTyp, *mpRed, mpRed);
+             msFid, azPos, aiSft, *mpRed, mpRed);
         #endif
         return *mpRed++;
     } else {
-        return get_frombuffer(azPos, aiTyp);
+        return get_frombuffer(azPos, aiSft);
     }
 } /* int get(...) */
 
@@ -90,22 +116,21 @@ int JFileAhead::get (
  * Calls get_frombuffer afterwards to get the data from the buffer.
  *
  * @param azPos     position to read from
- * @param aiTyp     0=read, 1=hard ahead, 2=soft ahead
+ * @param aiSft     0=read, 1=hard ahead, 2=soft ahead
  * @param aiSek     seek to perform: 0=append, 1=seek, 2=scroll back
  * @return data at requested position, EOF or EOB.
  */
 /**
  * Tries to get data from the buffer. Calls get_outofbuffer if that is not possible.
  * @param azPos     position to read from
- * @param aiTyp     0=read, 1=hard ahead, 2=soft ahead
+ * @param aiSft     0=read, 1=hard ahead, 2=soft ahead
  * @return data at requested position, EOF or EOB.
  */
 int JFileAhead::get_frombuffer (
     const off_t &azPos,    /* position to read from                */
-    const int aiTyp        /* 0=read, 1=hard ahead, 2=soft ahead   */
+    const int aiSft        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
 	uchar *lpDta ;
-	bool liSek=0 ;	/* reposition on file ? 0=no, 1=yes, 2=scroll back */
 
 	/* Get data from buffer? */
 	if (azPos < mzPosInp) {
@@ -118,7 +143,7 @@ int JFileAhead::get_frombuffer (
 			#if debug
 			if (JDebug::gbDbg[DBGRED])
 			  fprintf(JDebug::stddbg, "ufFabGet(%s,"P8zd",%d)->%2x (mem %p).\n",
-				 msFid, azPos, aiTyp, *lpDta, lpDta);
+				 msFid, azPos, aiSft, *lpDta, lpDta);
 			#endif
 
 			// prepare next reading position (but do not increase lpDta!!!)
@@ -135,19 +160,13 @@ int JFileAhead::get_frombuffer (
 
 			// return data
 			return *lpDta ;
-		} else {
-		    /* Seek & reset when reading before the buffer */
-		    if (azPos + miBlkSze >= mzPosInp - miBufUsd )
-		        liSek = 2 ; /* reading just before buffer */
-		    else
-		        liSek = 1 ; /* seek & reset buffer */
 		}
 	} else if (azPos >= mzPosEof) {
 	    /* eof */
         #if debug
         if (JDebug::gbDbg[DBGRED])
         fprintf(JDebug::stddbg, "ufFabGet(%s,"P8zd",%d)->EOF (mem).\n",
-           msFid, azPos, aiTyp);
+           msFid, azPos, aiSft);
         #endif
 
         mzPosRed = -1;
@@ -155,22 +174,9 @@ int JFileAhead::get_frombuffer (
         miRedSze = 0 ;
 
         return EOF ;
-	} else if (azPos >= mzPosInp + miBlkSze) {
-	    /* Reset  when reading "after" the buffer */
-	    liSek=1;
 	}
 
-	/* Soft ahead: continue only if no seek */
-	if (aiTyp == 2 && liSek != 0)  {
-		#if debug
-		if (JDebug::gbDbg[DBGRED])
-		  fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOB.\n",
-			 msFid, azPos, aiTyp);
-		#endif
-		return EOB ;
-	}
-
-	return get_outofbuffer(azPos, aiTyp, liSek) ;
+	return get_outofbuffer(azPos, aiSft) ;
 }
 
 /**
@@ -178,16 +184,46 @@ int JFileAhead::get_frombuffer (
  */
 int JFileAhead::get_outofbuffer (
     const off_t &azPos,    /* position to read from                */
-    const int aiTyp,       /* 0=read, 1=hard ahead, 2=soft ahead   */
-    const int aiSek        /* perform seek: 0=append, 1=seek, 2=scroll back  */
+    const int aiSft        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
+	bool liSek=0 ;	    /* reposition on file ? 0=no, 1=yes, 2=scroll back */
     int liTdo ;         /* number of bytes to read */
     int liDne ;         /* number of bytes read */
     uchar *lpInp ;      /* place in buffer to read to */
     off_t lzPos ;       /* position to seek */
 
+    /* Check what should be done and set liSek accordingly */
+    if (azPos < mzPosInp - miBufUsd ){
+        // Reading before the start of the buffer:
+        // - either cancel the whole buffer: easiest, but we loose all data in the buffer
+        // - either scroll back the buffer: harder, but we may not loose all data in the buffer
+        if (azPos + miBlkSze < mzPosInp - miBufUsd){
+            // scrolling back more than the blocksize is not (yet) possible: just reset
+            liSek = 1;
+        } else {
+            // no more than one block: scroll back
+            liSek = 2;
+        }
+    } else if (azPos >= mzPosInp + miBlkSze ) {
+        // Reading one block will not be enough: seek and reset
+        liSek = 1 ;
+    } else {
+        // Reading less than one additional block: just append to the buffer
+        liSek = 0 ;
+    }
+
+	/* Soft ahead: seek or overreading the buffer is not allowed */
+	if (aiSft == 2 && ((liSek != 0) || (azPos >= mzPosBse + mlBufSze - miBlkSze))) {
+		#if debug
+		if (JDebug::gbDbg[DBGRED])
+		  fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOB.\n",
+			 msFid, azPos, aiSft);
+		#endif
+		return EOB ;
+	}
+
     /* Set reading position: lzPos, lpInp and liTdo */
-    switch (aiSek) {
+    switch (liSek) {
         case (0):
             /* How many bytes can we read ? */
             liTdo = mpMax - mpInp ;
@@ -268,7 +304,8 @@ int JFileAhead::get_outofbuffer (
             lzPos = 0 ;
     } /* switch aiSek */
 
-    if (aiSek != 0) {
+    /* Perform seek */
+    if (liSek != 0) {
         #if debug
         if (JDebug::gbDbg[DBGBUF]) fprintf(JDebug::stddbg, "ufFabGet: Seek %" PRIzd ".\n", azPos);
         #endif
@@ -285,7 +322,7 @@ int JFileAhead::get_outofbuffer (
       #if debug
       if (JDebug::gbDbg[DBGRED])
         fprintf(JDebug::stddbg, "ufFabGet(%p,"P8zd",%d)->EOF.\n",
-          msFid, azPos, aiTyp);
+          msFid, azPos, aiSft);
       #endif
 
       mzPosEof = lzPos + (off_t) liDne ;
@@ -295,11 +332,13 @@ int JFileAhead::get_outofbuffer (
     #if debug
     if (JDebug::gbDbg[DBGRED])
       fprintf(JDebug::stddbg, "ufFabGet(%s,"P8zd",%d)->%2x (sto %p).\n",
-        msFid, azPos, aiTyp, *mpInp, mpInp);
+        msFid, azPos, aiSft, *mpInp, mpInp);
     #endif
 
-    switch (aiSek){
+    /* Update the buffer variables */
+    switch (liSek){
         case (2):
+            // Handle scroll-back
             if (liDne < liTdo){
                 /* repair buffer */
                 mpInp = lpInp + liDne;
@@ -324,6 +363,8 @@ int JFileAhead::get_outofbuffer (
             /* Advance input position */
             mzPosInp += liDne ;
             mpInp    += liDne ;
+
+            // Cycle buffer
             if ( mpInp == mpMax ){
               mpInp = mpBuf ;
             } else if ( mpInp > mpMax ) {
@@ -335,6 +376,7 @@ int JFileAhead::get_outofbuffer (
                 // Quite uncommon, but not an error.
                 // Can happen for example after scrolling back (case 1) less than giBlkSze
                 miBufUsd = mlBufSze ;
+                mzPosBse = mzPosInp - mlBufSze ;
             }
             miRedSze += liDne ;
             if (mpRed == mpMax)
@@ -343,6 +385,6 @@ int JFileAhead::get_outofbuffer (
     } /* switch aiSek */
 
     /* read it again */
-    return get(azPos, aiTyp);
+    return get(azPos, aiSft);
 } /* get_outofbuffer */
 } /* namespace JojoDiff */

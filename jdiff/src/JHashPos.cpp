@@ -35,7 +35,7 @@ const int COLLISION_HIGH = 4 ;      /* rate at which high quality samples should
 const int COLLISION_LOW = 1 ;       /* rate at which low quality samples should override  */
 
 /**
-  * Create a new hash-table with size (number of elements) not larger that the given size.
+  * @brief Create a new hash-table with size (number of elements) not larger that the given size.
   *
   * Actual size will be based on the highest prime below the highest power of 2
   * lower or equal to the specified size, e.g. aiSze=8192 will create a hashtable
@@ -97,7 +97,6 @@ JHashPos::~JHashPos() {
  * @param aiEqlCnt      Quality of the sample
  */
 void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
-//@     static off_t azMax ;   // When jumping back and forth, samples below this mark do not increase the load
     /* Every time the load factor increases by 1
      * - increase miHshColMax: the ratio at which we store values to achieve a uniform distribution of samples
      * - increase miHshRlb: the number of bytes to verify (reliability range) to be sure there is no match
@@ -120,7 +119,7 @@ void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
         miHshColCnt-= COLLISION_LOW ;    // reduce overrides by low-quality samples
 
     /* store key and value when the collision counter reaches the collision threshold */
-    if (miHshColCnt <= 0 ) { //@>= miHshColMax){
+    if (miHshColCnt <= 0 ) {
         /* calculate the index in the hashtable for the given key */
         int liIdx = (akCurHsh % miHshPme) ;
 
@@ -133,21 +132,14 @@ void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
         #endif
 
         /* store */
-        //@if (mzHshTblPos[liIdx] < azPos) {
-            mkHshTblHsh[liIdx] = akCurHsh ;
-            mzHshTblPos[liIdx] = azPos ;
-            miHshColCnt = miHshColMax ; // reset subsequent lost collisions counter
-        //@} else {
-        //@    // Jump back detected
-        //@    // The load counter has been falsely decreased, probably a number of times already
-        //@    if (miLodCnt < miHshPme)
-        //@        miLodCnt += COLLISION_HIGH ;
-        //@}
+        mkHshTblHsh[liIdx] = akCurHsh ;
+        mzHshTblPos[liIdx] = azPos ;
+        miHshColCnt = miHshColMax ; // reset subsequent lost collisions counter
     }
 } /* ufHshAdd */
 
 /**
- * Hasttable lookup
+ * @brief Hasttable lookup
  * @param alCurHsh  in:  hash key to lookup
  * @param lzPos     out: position found
  * @return true=found, false=notfound

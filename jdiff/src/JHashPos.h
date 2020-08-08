@@ -32,10 +32,35 @@
  *
  * Principle:
  * ----------
- * Input:  a[32]  32 8-bit values (characters)
+ * Input:  a[n]   8-bit values (characters, n=32 or 64 or ...)
+ *         e[n]   equality values, each e[x] is between 0 and n
+ *                  e[x] = 0             if e[x-1] <> e[x]
+ *                  e[x] = e[x-1] + 1    if e[x-1] == e[x] and e[x-1] < n
+ *                  e[x] = e[x-1]        if e[x-1] == e[x] and e[x-1] == n
+ *                  e[0] = 0
  *         p      prime number
- * Output: h = (a[31] x 2^31 + a[30] x 2^30 + .. + a[0]) % 2^32 % p
+ * Output: h[n]   hash for every a[n]
+ *         k[n]   key (index) for every a[n]
  *
+ * Calculations are as follows:
+ *         h = ((a[0] + e[0]) x 2^n + (a[1] + e[1]) x 2^(n-1) + .. + (a[n] + e[n])) % 2^n
+ *         k = h % p
+ *
+ * Example (simplified to 4-bit keys and values and n=8)
+ *     n :  0 1 2 3 4 5 6 7 8 9 a b c d e f ...
+ *   a[x]:  5 2 7 0 0 0 0 0 0 7 2 3 3 3 3 3 3 3 3 3 3 3 3 2 ...
+ *   e[x]:  0 0 0 0 1 2 3 4 5 0 0 0 1 2 3 4 5 6 7 8 8 8 8 0 ...
+ *   h[x]:  5 c f e d c b a 9 9 4 b a 9 8 7 6 5 4 3 1 d 5 c ...
+ *
+ * By adding  e[x] to every  a[x], long runs of equal bytes (0's or 3's in the example)
+ * become distinguishable: every 0 or 3 yields a different h[x]. Only after n x 2 times
+ * the same value, hashkeys become indistinguishable, leaving the algorithm n x 2 bytes
+ * to detect equal regions.
+ *
+ * By comparison, without e the hashkey would become as follows:
+ *     n :  0 1 2 3 4 5 6 7 8 9 a b c d e f ...
+ *   a[x]:  5 2 7 0 0 0 0 0 0 7 2 3 3 3 3 3 3 3 3 3 3 3 3 2 ...
+ *  h'[n]:  5 c f e c 8 0 0 0 7 0 3 9 5 d d d d d d d d d c ...
  *
  * Largest n-bit primes: 251, 509, 1021, 2039, 4093, 8191, 16381, 32749, 65521,
  *                       131071 (17 bit), ..., 4294967291 (32 bit)
@@ -43,34 +68,30 @@
  * Table entries contain a 32-bit hash value and a file position.
  *
  * The collision strategy tries to create a uniform distributed set of samples
- * over the investigated region, which is either the whole file or the
+ * over the  investigated  region,  which is  either  the  whole  file or  the
  * look-ahead region.
  * This is achieved by overwriting the original entry if either
- * - the original entry lies before the investigatd region (the base position), or
+ * - the original entry lies before the investigated region (the base position), or
  * - a number of subsequent non-overwriting collisions occur where
  *   x = (region size / hashtable size) + 2
  *   --> after x collisions, the collision wins where x is decreasing
  *       as the region mapped by the hashtable grows.
+ *
  * as of 23-06-2009 (v0.7)
- * - samples having a high number of equal characters are less meaningless
+ * - samples having a high number of equal characters are less meaningfull
  *   than samples without equal characters, therefore higher quality samples
  *   win in the collision strategy.
- * - quality is a number between 0 and 3:
- * 		3 = 31 to 24 doubles (equal characters) (lowest quality)
- * 		2 = 23 to 16 doubles (equal characters)
- * 		1 = 15 to 08 doubles (equal characters)
- * 		0 =  7 to  0 doubles (equal characters) (highest quality)
  *
  * Only samples from the original file are stored.
  * Samples from the new file are looked up.
  *
  * The investigated region is either
- * - the whole file when the prescan/backtrace option is used (default)
- * - the look-ahead region otherwise (options -f or -ff)
+ * - the whole file when the prescan option is used (default)
+ * - the look-ahead region otherwise (option -ff)
  *
- * With prescan/backtrace enabled, the algorithm behaves like a kind of
+ * With prescan enabled, the algorithm behaves like a kind of
  * copy/insert algorithm (simulated with insert/delete/modify and backtrace
- * instructions). Without prescan/backtrace, the algorithm behaves like an
+ * instructions). Without prescan nor backtrace, the algorithm behaves like an
  * insert/delete algorithm.
  *******************************************************************************/
 
@@ -122,61 +143,91 @@ public:
         return (akCurHsh * 2) + acNew + aiEql ;
 	}
 
-	/* Return the (un)reliability range: an estimate of the number of bytes to verify
-	 * to find a match. Reliability decreases as the hashtable (over)load
-	 * increases. This function returns an estimation of the number of bytes to verify
-	 * before deciding that regions do not match.
-	 */
+	/**
+	* @brief Return the (un)reliability range
+	*
+	* The unreliability range an estimate of the number of bytes to verify
+	* to find a match. Reliability decreases as the hashtable (over)load
+	* increases. This function returns an estimation of the number of bytes to verify
+	* before deciding that regions do not match.
+	*
+	*/
 	inline int get_reliability() const {
 		return miHshRlb ;
 	}
 
-	/* Hastable insert */
+	/**
+	* @brief Add key and position to the index hashtable.
+	*
+	* @param hkey   akCurHsh   Key
+	* @param azPos  azPos      Associated file position
+	* @param int    aiEqlCnt   Indication of equal byte within associated sample sequence
+	*/
 	void add (hkey akCurHsh, off_t azPos, int aiEqlCnt ) ;
 
-	/* Hashtable lookup */
+	/**
+	* @brief  Hashtable lookup
+	*
+	* @param  akCurHsh  Input:  Hashkey
+	* @param  &azPos    Output: Associated file position
+	* @return false = key not found, true = key found
+	*/
 	bool get (const hkey akCurHsh, off_t &azPos) ;
 
-	/* Hashtable printout */
+	/**
+	* @brief Hashtable printout
+	*/
 	void print() ;
 
-	/* Printout hashtable distribution */
+	/**
+	* @brief Printout hashtable distribution
+	*/
 	void dist(off_t azMax, int aiBck);
 
-	/* Return the index to use to create a hashtable of at most the given size. */
-	static int get_size_index(int sze);
+	/**
+	* @brief Return the index to use to create a hashtable of at most the given size.
+	*/
+	//@static int get_size_index(int sze);
 
-	/* return hashtable primme number */
+	/**
+    * @brief return hashtable prime number
+    */
 	int get_hashprime(){return miHshPme;}
 
-	/* return hashtable size in bytes */
+	/**
+	* @brief return hashtable size in bytes
+	*/
 	int get_hashsize(){return miHshSze;}
 
-	/* return hastable collision override threshold */
+	/**
+	* @brief return hastable collision override threshold
+	*/
 	int get_hashcolmax(){return miHshColMax;}
 
-	/* return number of hits found by this hashtable */
+	/**
+	* @brief return number of hits found by this hashtable
+	*/
 	int get_hashhits(){return miHshHit;}
 
 private:
 	/* The hash table. Using a struct causes certain compilers (gcc) to align        */
 	/* fields on 64-bit boundaries, causing 25% memory loss. Therefore, I use        */
 	/* two arrays instead of an array of structs.                                    */
-	off_t *mzHshTblPos ;    /* Hash values: positions within the original file       */
-	hkey  *mkHshTblHsh ;    /* Hash keys                                             */
+	off_t *mzHshTblPos ;    /**< Hash values: positions within the original file       */
+	hkey  *mkHshTblHsh ;    /**< Hash keys                                             */
 
 	/* Size */
-	int miHshPme  ;         /* prime number for size and hashing              				*/
-	int miHshSze ;          /* Actual size in bytes of the hashtable          				*/
+	int miHshPme  ;         /**< prime number for size and hashing              				*/
+	int miHshSze ;          /**< Actual size in bytes of the hashtable          				*/
 
     /* State */
-	int miHshColMax;        /* max number of collisions before override       				*/
-	int miHshColCnt;        /* current number of subsequent collisions.               		*/
-	int miHshRlb ;          /* hashtable reliability: decreases as the overloading grows 	*/
-    int miLodCnt ;          /* hashtable load-counter                                       */
+	int miHshColMax;        /**< max number of collisions before override       			  */
+	int miHshColCnt;        /**< current number of subsequent collisions.               	  */
+	int miHshRlb ;          /**< hashtable reliability: decreases as the overloading grows 	  */
+    int miLodCnt ;          /**< hashtable load-counter                                       */
 
     /* Statistics */
-    int miHshHit;           /* number of hits found by this hashtable                       */
+    int miHshHit;           /**< number of hits found by this hashtable                       */
 };
 }
 #endif /* JHASHPOS_H_ */
