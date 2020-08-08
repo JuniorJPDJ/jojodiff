@@ -42,38 +42,43 @@ bool JOutRgn::put (
 
   /* write output when operation code changes */
   if (aiOpr != siOprCur) {
+    // output the old operator
     switch (siOprCur) {
       case (MOD) :
-        gzOutBytCtl+=2;
-        gzOutBytDta+=szOprCnt ;
+        // a MOD sequence is only needed after an INS sequence
+        if ( siOprCur == INS ) {
+            gzOutBytCtl+=2+ufPutLen(szOprCnt);
+            gzOutBytDta+=szOprCnt ;
+        }
         fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - szOprCnt - azLen, szOprCnt) ;
         break;
 
       case (INS) :
-        gzOutBytCtl+=2;
+        gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytDta+=szOprCnt ;
         fprintf(mpFilOut, P8zd " " P8zd " INS %" PRIzd "\n", azPosOrg, azPosNew - szOprCnt, szOprCnt) ;
         break;
 
       case (DEL) :
-        gzOutBytCtl+=2;
+        gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytDel+=szOprCnt;
         fprintf(mpFilOut, P8zd " " P8zd " DEL %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - azLen, szOprCnt);
         break;
 
       case (BKT) :
-        gzOutBytCtl+=2;
+        gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytBkt+=szOprCnt;
         fprintf(mpFilOut, P8zd " " P8zd " BKT %" PRIzd "\n", azPosOrg + szOprCnt - azLen, azPosNew - azLen, szOprCnt);
         break;
 
       case (EQL) :
-        gzOutBytCtl+=2;
+        gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytEql+=szOprCnt ;
         fprintf(mpFilOut, P8zd " " P8zd " EQL %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew - szOprCnt, szOprCnt);
         break;
     }
 
+    // switch to the new operator
     siOprCur = aiOpr;
     szOprCnt = 0;
   }
@@ -94,4 +99,35 @@ bool JOutRgn::put (
   return true ; // we never need details
 } /* ufOutBytRgn */
 
+/* ---------------------------------------------------------------
+ * ufPutLen returns a length as follows
+ * byte1  following      formula              if number is
+ * -----  ---------      -------------------- --------------------
+ * 0-251                 1-252                between 1 and 252
+ * 252    x              253 + x              between 253 and 508
+ * 253    xx             253 + 256 + xx       a 16-bit number
+ * 254    xxxx           253 + 256 + xxxx     a 32-bit number
+ * 255    xxxxxxxx       253 + 256 + xxxxxxxx a 64-bit number
+ * ---------------------------------------------------------------*/
+int JOutRgn::ufPutLen ( off_t azLen  )
+{ if (azLen <= 252) {
+    return 1;
+  } else if (azLen <= 508) {
+    return 2;
+  } else if (azLen <= 0xffff) {
+    return 3;
+#ifdef JDIFF_LARGEFILE
+  } else if (azLen <= 0xffffffff) {
+#else
+  } else {
+#endif
+    return 4;
+  }
+#ifdef JDIFF_LARGEFILE
+  else {
+    return 8;
+  }
+#endif
 }
+
+} /* namespace */

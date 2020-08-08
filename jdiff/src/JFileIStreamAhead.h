@@ -36,13 +36,18 @@ namespace JojoDiff {
  */
 class JFileIStreamAhead: public JFile {
 public:
-    JFileIStreamAhead(istream * apFil, const char *asFid, const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
+    JFileIStreamAhead(istream *apFil, const char *asFid, const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
     virtual ~JFileIStreamAhead();
 
-    /**
-     * Get one byte from the file at given position. Position is incremented by one.
-     * Soft reading returns EOB when requested data is not in the buffer.
-     */
+	/**
+	 * @brief Get byte at specified address and increment the address to the next byte.
+	 *
+	 * Soft read ahead will return an EOB when date is not available in the buffer.
+	 *
+	 * @param   azPos	position to read, incremented on read (not for EOF or EOB)
+	 * @param   aiTyp	0=read, 1=hard read ahead, 2=soft read ahead
+	 * @return 			the read character or EOF or EOB.
+	 */
     int get(
         const off_t &azPos,   /* position to read from                */
         const int aiTyp 	    /* 0=read, 1=hard ahead, 2=soft ahead   */
@@ -53,6 +58,17 @@ public:
      */
     long seekcount();
 
+	/**
+	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+	 *
+	 * Attention: the base will be implicitly changed by get on non-buffered reads too !
+	 *
+	 * @param   azBse	base position
+	 */
+	virtual void set_lookahead_base (
+	    const off_t azBse	/* new base position for soft lookahead */
+	) ;
+
     /**
 	 * For buffered files, return the position of the buffer
 	 *
@@ -62,7 +78,8 @@ public:
 
 private:
     /**
-     * Tries to get data from the buffer. Calls get_outofbuffer if that is not possible.
+     * @brief Get data from the buffer. Call get_fromfile such is not possible.
+     *
      * @param azPos		position to read from
      * @param aiTyp		0=read, 1=hard ahead, 2=soft ahead
      * @return data at requested position, EOF or EOB.
@@ -73,19 +90,19 @@ private:
     );
 
     /**
+     * @brief Get data from the underlying system file.
+     *
      * Retrieves requested position into the buffer, trying to keep the buffer as
      * large as possible (i.e. invalidating/overwriting as less as possible).
      * Calls get_frombuffer afterwards to get the data from the buffer.
      *
      * @param azPos		position to read from
-     * @param aiTyp		0=read, 1=hard ahead, 2=soft ahead
-     * @param aiSek		seek to perform: 0=append, 1=seek, 2=scroll back
+     * @param aiSft		0=read, 1=hard ahead, 2=soft ahead
      * @return data at requested position, EOF or EOB.
      */
-    int get_outofbuffer(
+    int get_fromfile(
         const off_t &azPos, /* position to read from                */
-        const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
-//@        const int aiSek /* perform seek: 0=append, 1=seek, 2=scroll back  */
+        const int aiSft     /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
 private:
@@ -107,6 +124,7 @@ private:
     off_t mzPosInp;     /* current position in file                     */
     off_t mzPosRed;     /* last position read from buffer				*/
     off_t mzPosEof;     /* eof position 			                    */
+    off_t mzPosBse;     /* base position for soft reading               */
 
     /* Statistics */
     long mlFabSek ;      /* Number of times an fseek operation was performed  */

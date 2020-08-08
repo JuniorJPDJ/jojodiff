@@ -160,17 +160,18 @@ public:
      * @param aiVerbse  Verbose level 0=no, 1=normal, 2=high (default = 0)
      * @param abSrcBkt  Backtrace on sourcefile allowed? (default = yes)
      * @param aiSrcScn  Prescan source file: 0=no, 1=yes (default = yes)
-     * @param aiMchMax  Maximum entries in matching table (default = 8)
-     * @param aiMchMin  Minimum entries in matching table (default = 4)
+     * @param aiMchMax  Maximum entries in matching table (default = 1024)
+     * @param aiMchMin  Minimum entries in matching table (default = 2)
      * @param aiAhdMax  Maximum bytes to find ahead (default = 256kB)
+     * @param abCmpAll  Compare all matches or only buffered matches ? (default true)
      */
     JDiff(JFile * const apFilOrg, JFile * const apFilNew, JOut * const apOut,
-        const int aiHshSze = 8388608, const
-        int aiVerbse=0,
+        const int aiHshSze=8,
+        const int aiVerbse=0,
         const int abSrcBkt=true,
         const int aiSrcScn=true,
-        const int aiMchMax=8,
-        const int aiMchMin=4,
+        const int aiMchMax=1024,
+        const int aiMchMin=2,
         const int aiAhdMax=256*1024,
         const bool abCmpAll = true);
 
@@ -223,18 +224,20 @@ private:
 	off_t mzAhdNew;        // Current ahead position on new file
 	hkey mlHshOrg;         // Current hash value for original file
 	hkey mlHshNew;         // Current hash value for new file
-	int miValOrg;          // Current file value
-	int miValNew;          // Current file value
+	int miValOrg;          // Current  file value
+	int miPrvOrg;          // Previous file value
+	int miValNew;          // Current  file value
+	int miPrvNew;          // Previous file value
 	int miEqlOrg;          // Indicator for equal bytes in current sample
 	int miEqlNew;          // Indicator for equal bytes in current sample
 
 	/**
-	 * Flush pending output
+	 * @brief Flush pending output
 	 */
 	void ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql, bool &lbEql) const ;
 
 	/**
-	 * Finds the nearest equal regions between the two files
+	 * @brief Finds the nearest equal regions between the two files
 	 *
 	 * @param azRedOrg  in:  read position in original file to start looking from
 	 * @param azRedNew  in:  read position in new file to start looking from
@@ -254,7 +257,7 @@ private:
     int ufFndAhdScn () ;
 
     /** Hashes the next byte from specified file. */
-    void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) const ;
+    //@void ufFndAhdGet(JFile *apFil, const off_t &azPos, int &aiVal, int &aiEql, int aiSft) const ;
 
 public:
     /*

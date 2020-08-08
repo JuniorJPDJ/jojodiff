@@ -26,32 +26,41 @@
 #include "JFile.h"
 #include "JHashPos.h"
 
-//@#define MCH_PME 127                     // Matching hashtable prime
-//@#define MCH_MAX 256                     // Maximum size of matching table
-#define MCH_PME 1021                     // Matching hashtable prime
-#define MCH_MAX 1024                     // Maximum size of matching table
-
 namespace JojoDiff {
 
 /* JojoDiff Matching Table: this class allows to build and maintain  a table of matching regions
  * between two files and allows to select the "best" match from the table. */
 class JMatchTable {
 public:
-	/* Construct a matching table for specified hashtable, original and new files. */
-	JMatchTable(JHashPos const * cpHsh,  JFile  * apFilOrg, JFile  * apFilNew, const bool abCmpAll = true);
+	/**
+	* @brief Construct a matching table for specified hashtable, original and new files.
+	*
+	* @param  cpHsh     JHashPos Hashtable
+	* @param  apFilOrg  Source file
+	* @param  apFilNew  Destination file
+	* @param  aiSze     Size of the matychtable (in number of elements, one element = 9 words)
+	* @param  abCmpAll  Compare all matches, or only those available within the filebuffers
+	*/
+	JMatchTable(JHashPos const * cpHsh,  JFile  * apFilOrg, JFile  * apFilNew,
+             const int aiMchSze, const bool abCmpAll = true);
 
 	/* Destructor */
 	virtual ~JMatchTable();
 
-	/* -----------------------------------------------------------------------------
-	 * Add given match to the array of matches:
-	 * - add to colliding match if possible, or
-	 * - add at the end of the list, or
-	 * - override an old match otherwise
-	 * Returns
-	 *   0   if a new entry has been added and table is full
-	 *   1   if a new entry has been added
-	 *   2   if an existing entry has been enlarged
+	/**
+	 * @brief Add given match to the array of matches
+	 *
+	 * - Add to a colliding or gliding match if possible, or
+	 * - Add at the end of the list, or
+	 * - Override an old match if posible
+	 *
+	 * @return  0   if a new entry has been added and table is full
+	 * @return  1   if a new entry has been added
+	 * @return  2   if an existing entry has been enlarged
+     * @return  3   match was found to be invalid
+     * @return  4   added match is very good, no need to continue much longer
+     * @return  5   added match is perfect, ne need to continue
+	 * @return -1   if a new entry could not be added (table full)
 	 * ---------------------------------------------------------------------------*/
 	int add (
 	  off_t const &azFndOrgAdd,      /* match to add               */
@@ -59,20 +68,33 @@ public:
 	  off_t const &azRedNew
 	);
 
-	/* -----------------------------------------------------------------------------
-	 * Get the nearest optimized and valid match from the array of matches.
+	/**
+	 * @brief   Get the best (=nearest) optimized and valid match from the array of matches.
+	 *
+	 * @param   azBseOrg Current reading position in original file
+	 * @param   azBseNew Current reading position in new file
+	 * @param   azBstOrg    out: best found new position for original file
+	 * @param   azBstNew    out: best found new position for new file
+	 * @return  false= match table is full, cleanup before next run
+     * @return  true = match table still has some room for new matches
 	 * ---------------------------------------------------------------------------*/
-	bool get (
+	bool getbest (
 	  off_t const &azBseOrg,       /* base positions       */
 	  off_t const &azBseNew,
 	  off_t &azBstOrg,             /* best position found  */
 	  off_t &azBstNew
-	) const;
+	) ;
 
-	/* -----------------------------------------------------------------------------
-	 * Cleanup & check if there is free space in the table of matches
-	 * ---------------------------------------------------------------------------*/
-	int cleanup ( off_t const &czBseNew ) ;
+    /**
+     * @brief Cleanup, check free space and fastcheck best match.
+     *
+     * @param       azRedNew    Current reading position
+     * @param       azBseNew    Cleanup all mathes before this position
+     *
+     * @return < 0  Negated number valid matches: one of the matches meets azBseNew
+     *         > 0  Number of valid matches
+     * ---------------------------------------------------------------------------*/
+    int cleanup ( off_t const azRedNew, int const liBck );
 
 private:
     /**
@@ -123,7 +145,6 @@ private:
     */
     void calcPosOrg(rMch *apCur, off_t &azTstOrg, off_t &azTstNew) const ;
 
-
 	/*
 	 * Context: we need the hashtable and the two source files
 	 */
@@ -134,13 +155,17 @@ private:
 	/*
 	 * Matchtable elements
 	 */
-	rMch *msMch ;               /* table of matches */
-	rMch *mpMch[MCH_PME];       /* hastable on izDlt with matches       */
-	rMch *mpMchFre ;            /* freelist of matches (iiCnt == -1)    */
-    rMch *mpMchGld ;            /* last gliding match */
-    off_t mzGldDlt ;            /* last gliding match next delta */
+	rMch *msMch ;               /*< table of matches (dynamic array)                    */
+	rMch **mpMch ;              /*< hastable on izDlt with matches (dynamic array)      */
+	rMch *mpMchFre ;            /*< freelist of matches                                 */
+    rMch *mpMchGld ;            /*< last gliding match                                  */
+    rMch *mpMchBst ;            /*< found best match                                    */
+    off_t mzGldDlt ;            /*< last gliding match next delta                       */
+    int miMchFre ;              /*< free index (0 at start)                             */
 
 	/* settings */
+	int  miMchSze ;             /* Size of the matching table                       */
+	int  miMchPme ;             /* Size of matching hashtable                       */
 	bool mbCmpAll ;             /* Compare all matches, even if data not in buffer? */
 
 public:

@@ -46,6 +46,8 @@ public:
 
 private:
     FILE *mpFilOut ;    // output file
+
+    int ufPutLen ( off_t azLen ) ;
 };
 
 }

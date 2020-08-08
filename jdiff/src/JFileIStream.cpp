@@ -49,6 +49,19 @@ off_t JFileIStream::getBufPos() {
 };
 
 /**
+ * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+ *
+ * Attention: the base will be implicitly changed by get on non-buffered reads too !
+ *
+ * @param   azBse	base position
+ */
+void JFileIStream::set_lookahead_base (
+    const off_t azBse	/* new base position */
+) {
+    // no need to do anything
+}
+
+/**
  * Gets one byte from the lookahead file.
  */
 int JFileIStream:: get (

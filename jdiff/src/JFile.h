@@ -36,16 +36,28 @@ public:
 	virtual ~JFile(){};
 
 	/**
-	 * Get byte at specified address. Auto-increments the address to the next byte.
-	 * Soft read ahead will return an EOB when date is not in the buffer.
+	 * @brief Get byte at specified address and increment the address to the next byte.
 	 *
-	 * @param azPos		position to read from, gets incremented by one after reading
-	 * @param aiTyp		0=read, 1=hard read ahead, 2=soft read ahead
-	 * @return 			  the read character or EOF or EOB.
+	 * Soft read ahead will return an EOB when date is not available in the buffer.
+	 *
+	 * @param   azPos	position to read, incremented on read (not for EOF or EOB)
+	 * @param   aiTyp	0=read, 1=hard read ahead, 2=soft read ahead
+	 * @return 			the read character or EOF or EOB.
 	 */
 	virtual int get (
 	    const off_t &azPos,	/* position to read from                */
 	    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+	) = 0 ;
+
+	/**
+	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+	 *
+	 * Attention: the base will be implicitly changed by get on non-buffered reads too !
+	 *
+	 * @param   azBse	base position
+	 */
+	virtual void set_lookahead_base (
+	    const off_t azBse	/* new base position for soft lookahead */
 	) = 0 ;
 
 	/**

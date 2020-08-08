@@ -161,4 +161,20 @@ const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1)))
 #define EQL     0xA3    /* 163 Equal        */
 #define BKT     0xA2    /* 162 Backtrace    */
 
+/**
+* Some utilities
+*/
+
+namespace JojoDiff {
+
+    /**
+    * @brief Get highest lower prime.
+    *
+    * @param    aiNum   number to get a prime for
+    * @return   > 0     largest prime lower than aiNum
+    */
+    int getLowerPrime(int aiNum) ;
+
+} /* namespace jojodiff */
+
 #endif /* _JDEFS_H */

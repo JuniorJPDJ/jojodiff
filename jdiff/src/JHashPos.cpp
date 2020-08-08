@@ -34,29 +34,6 @@ const int COLLISION_THRESHOLD = 4 ; /* override when collision counter exceeds t
 const int COLLISION_HIGH = 4 ;      /* rate at which high quality samples should override */
 const int COLLISION_LOW = 1 ;       /* rate at which low quality samples should override  */
 
-/* List of primes we select from when size is specified on commandline
-const int giPme[24] = { 2147483647, 1073741789, 536870909,  268435399,
-                         134217689,   67108859,  33554393,   16777213,
-                           8388593,    4194301,   2097143,    1048573,
-                            524287,     262139,    131071,      65521,
-                             32749,      16381,      8191,       4093,
-                              2039,       1021,       509,        251} ;*/
-
-/**
-* Check if number is a prime number.
-* @param   number     Number to check
-* @return  true = a prime, false = not a prime
-*/
-bool isPrime(int number){
-    if(number < 2) return 0;
-    if(number == 2) return 1;
-    if(number % 2 == 0) return 0;
-    for(int  i=3; number/i >= i; i+=2){
-        if(number % i == 0 ) return false;
-    }
-    return true;
-}
-
 /**
   * Create a new hash-table with size (number of elements) not larger that the given size.
   *
@@ -73,14 +50,20 @@ JHashPos::JHashPos(int aiSze)
    miHshRlb(SMPSZE + SMPSZE / 2), miHshHit(0)
 {
     /* get largest prime < aiSze */
-    int liSzeIdx=aiSze / (sizeof(hkey)+sizeof(off_t));      // convert Mb to number of elements
-    for (; ! isPrime(liSzeIdx); liSzeIdx--) ;               // find nearest lower prime
+    int liSzeIdx ;
+    if (aiSze < 1)
+        liSzeIdx = 1 ;
+    else
+        liSzeIdx = aiSze ;
+    liSzeIdx = (liSzeIdx * 1024 * 1024) /                   // convert Mb to number of elements
+                    (sizeof(hkey)+sizeof(off_t));
+    liSzeIdx = getLowerPrime(liSzeIdx);                     // find nearest lower prime
 
     /* allocate hashtable */
-    miHshPme = liSzeIdx ;                                   // keep for refernce
-    miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));   // reconvert to bytes
-    mzHshTblPos = (off_t *) calloc(miHshPme,                // allocate and initialize
-                        sizeof(off_t) + sizeof(hkey)) ;
+    miHshPme = liSzeIdx ;                                   // keep for reference
+    miHshSze = miHshPme * (sizeof(off_t) + sizeof(hkey));   // convert to bytes
+    mzHshTblPos = (off_t *) malloc(miHshPme *               // allocate and initialize
+                        (sizeof(off_t) + sizeof(hkey))) ;
     mkHshTblHsh = (hkey *) &mzHshTblPos[miHshPme] ;         // set address of hashes
     miLodCnt = miHshPme ;
 
@@ -114,6 +97,7 @@ JHashPos::~JHashPos() {
  * @param aiEqlCnt      Quality of the sample
  */
 void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
+//@     static off_t azMax ;   // When jumping back and forth, samples below this mark do not increase the load
     /* Every time the load factor increases by 1
      * - increase miHshColMax: the ratio at which we store values to achieve a uniform distribution of samples
      * - increase miHshRlb: the number of bytes to verify (reliability range) to be sure there is no match
@@ -149,9 +133,16 @@ void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
         #endif
 
         /* store */
-        mkHshTblHsh[liIdx] = akCurHsh ;
-        mzHshTblPos[liIdx] = azPos ;
-        miHshColCnt = miHshColMax ; // reset subsequent lost collisions counter
+        //@if (mzHshTblPos[liIdx] < azPos) {
+            mkHshTblHsh[liIdx] = akCurHsh ;
+            mzHshTblPos[liIdx] = azPos ;
+            miHshColCnt = miHshColMax ; // reset subsequent lost collisions counter
+        //@} else {
+        //@    // Jump back detected
+        //@    // The load counter has been falsely decreased, probably a number of times already
+        //@    if (miLodCnt < miHshPme)
+        //@        miLodCnt += COLLISION_HIGH ;
+        //@}
     }
 } /* ufHshAdd */
 
@@ -236,8 +227,10 @@ void JHashPos::dist(off_t azMax, int aiBck){
         			liIdx, (off_t) liIdx * liHshDiv, (off_t) (liIdx + 1) * liHshDiv, liBckCnt[liIdx],
         			(liBckCnt[liIdx]==0)?-1:liHshDiv / liBckCnt[liIdx]) ;
         }
-        fprintf(JDebug::stddbg, "Hash Dist Avg/Min/Max/%% = %d/%d/%d/%d%%\n", liCnt / aiBck, liMin, liMax, 100 - (liMin / (liMax / 100)));
-        fprintf(JDebug::stddbg, "Hash Dist Load          = %d/%d=%d%%\n", liCnt, miHshPme, liCnt / (miHshPme / 100));
+        fprintf(JDebug::stddbg, "Hash Dist Avg/Min/Max/%% = %d/%d/%d/%d%%\n",
+                liCnt / aiBck, liMin, liMax, liMax > 0 ? (100 - (liMin / (liMax / 100))) : -1);
+        fprintf(JDebug::stddbg, "Hash Dist Load          = %d/%d=%d%%\n",
+                liCnt, miHshPme, miHshPme > 0 ? (liCnt / (miHshPme / 100)) : -1);
     }
 } /* JHasPos::dist */
 

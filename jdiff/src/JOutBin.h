@@ -46,17 +46,24 @@ public:
     );
 
 private:
-    FILE *mpFilOut ;    // output file
+    FILE *mpFilOut ;        /*< output file */
 
-    int   miOprCur ;        /* current operand: INS, MOD, EQL or DEL. ESC means none */
-    off_t mzEqlCnt ;        /* number of pending equal bytes */
-    int   miEqlBuf[4];      /* first four equal bytes */
-    int mbOutEsc;           /* Pending escape character in data stream  ?*/
+    int   miOprCur ;        /*< current operand: INS, MOD, EQL or DEL. */
+    off_t mzEqlCnt ;        /*< number of pending equal bytes */
+    int   miEqlBuf[4];      /*< first four equal bytes */
+    int mbOutEsc;           /*< Pending escape character in data stream  ?*/
 
+    /*@brief Output one byte of data */
     void ufPutByt ( int aiByt ) ;
+
+    /*@brief Output an operator sequence */
     void ufPutOpr ( int aiOpr ) ;
-    int  ufPutSze ( off_t azLen ) ;
+
+    /*@brief Output an operator offset */
     void ufPutLen ( off_t azLen ) ;
+
+    //@ int  ufPutSze ( off_t azLen ) ;
+
 };
 
 }

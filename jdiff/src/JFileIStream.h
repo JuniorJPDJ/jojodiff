@@ -58,12 +58,23 @@ public:
      */
     long seekcount();
 
-     /**
-	 * For buffered files, return the position of the buffer
-	 * JFileIStream does not buffer so returns -1
+	/**
+	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
 	 *
-	 * @return  -1=no buffering, > 0 : first position in buffer
+	 * Attention: the base will be implicitly changed by get on non-buffered reads too !
+	 *
+	 * @param   azBse	base position
 	 */
+	virtual void set_lookahead_base (
+	    const off_t azBse	/* new base position for soft lookahead */
+	) ;
+
+     /**
+     * For buffered files, return the position of the buffer
+     * JFileIStream does not buffer so returns -1
+     *
+     * @return  -1=no buffering, > 0 : first position in buffer
+     */
 	off_t getBufPos();
 
 

@@ -15,6 +15,7 @@
 * Joris Heirbaut        v0.7    01-11-2009 do not read original file on MOD
 * Joris Heirbaut		    v0.8	  15-09-2011 C++ wrapping
 * Joris Heirbaut        v0.8.2  26-07-2020 Update to GCC v10
+* Joris Heirbaut        v0.8.4  08-2020    Set default operator if ESC is missing
 *
 * Licence
 * -------
@@ -64,12 +65,12 @@ FILE *stddbg;           /* Debug output to stddbg or stdout                */
 /*******************************************************************************
 * Input routines
 *******************************************************************************/
-#define ESC     0xA7
-#define MOD     0xA6
-#define INS     0xA5
-#define DEL     0xA4
-#define EQL     0xA3
-#define BKT     0xA2
+#define ESC     0xA7    // 167 or octal 247
+#define MOD     0xA6    // 166 or octal 246
+#define INS     0xA5    // 165 or octal 245
+#define DEL     0xA4    // 164 or octal 244
+#define EQL     0xA3    // 163 or octal 243
+#define BKT     0xA2    // 162 or octal 242
 
 /** @brief Get an offset from the input file
 *
@@ -113,6 +114,116 @@ off_t ufGetInt( FILE *lpFil ){
   }
 }
 
+/** @brief Put one byte of output data
+*
+* @param    asFilOrg    source file
+* @param    asFilOut    output file
+* @param    aiOpr       MOD or INS
+* @param    aiOut       output byte
+* @param    aiOff       offset
+* @return   1
+*/
+int ufPutDta( FILE *asFilOrg, FILE *asFilOut, int liOpr, int const aiDta, off_t aiOff )
+{
+    putc(aiDta, asFilOut) ;
+    if (giVerbse > 2) {
+        fprintf(stddbg, P8zd" " P8zd " %s %3o %c\n",
+                  jftell(asFilOrg)-1 + ((liOpr == MOD) ? aiOff : 0),
+                  jftell(asFilOut)-1,
+                  aiDta,
+                  (liOpr == MOD) ? "MOD" : "INS",
+                  ((aiDta >= 32 && aiDta <= 127)?(char) aiDta:' '))  ;
+    }
+    return 1 ;
+}
+
+/** @brief Read a data sequence (INS or MOD)
+*
+* @param    asFilOrg    source file
+* @param    asFilPch    patch file
+* @param    asFilOut    output file
+* @param    aiOpr       INS or MOD
+* @param    azMod       out: offset counter
+* @param    aiPnd       First pending byte (EOF = no pending byte)
+* @param    aiDbl       Second pending byte (EOF = no pending byte)
+*/
+int ufGetDta( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut, int const liOpr, off_t &lzMod, int liPnd, int liDbl )
+{
+    int liInp ;         /* Input from asFilPch                  */
+    int liNew;          /* New operator                         */
+    bool lbEsc = false; /* Pending escape ? */
+
+    lzMod = 0 ;
+
+    /* First, output the pending bytes:
+       liPnd  liDbl     Output
+        xxx    <na>     xxx
+        ESC    xxx      ESC xxx
+        ESC    ESC      ESC ESC
+    */
+    if (liPnd != EOF) {
+        lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liPnd, liDbl==EOF ? -1 : -2) ;
+        if (liPnd == ESC && liDbl != ESC) {
+          lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liDbl, -1) ;
+        }
+    }
+
+    /* Read loop */
+    while ((liInp = getc(asFilPch)) != EOF) {
+        // Handle ESC-code
+        if (liInp == ESC) {
+            liNew = getc(asFilPch);
+            switch (liNew) {
+                case DEL:
+                case EQL:
+                case BKT:
+                case MOD:
+                case INS:
+                    break ;
+                case ESC:
+                    // Double ESC: drop one
+                    if (giVerbse > 1) {
+                      fprintf(stddbg, "" P8zd " " P8zd " ESC ESC\n",
+                              jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
+                    }
+
+                    // Write the single ESC and continue
+                    lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liInp, lzMod) ;
+                    continue ;
+
+                default:
+                  // ESC <xxx> with <xxx> not an opcode: output as they are
+                  if (giVerbse > 1) {
+                    fprintf(stddbg, "" P8zd " " P8zd " ESC XXX\n",
+                            jftell(asFilOrg)+lzMod, jftell(asFilOut)) ;
+                  }
+
+                  // Write the escape, the <xxx> and continue
+                  lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liInp, lzMod) ;
+                  lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liNew, lzMod) ;
+                  continue;
+            }
+            if (liNew == liOpr) {
+                // <ESC> MOD within an <ESC> MOD is meaningless: handle as data
+                // <ESC> INS within an <ESC> INS is meaningless: handle as data
+                lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, ESC, lzMod) ;
+                if (giVerbse > 1) {
+                    fprintf(stddbg, P8zd" " P8zd " MOD %3o ESC\n",
+                            jftell(asFilOrg)+lzMod-1, jftell(asFilOut)-1, ESC)  ;
+                }
+                liInp=liNew ;   // will be output below
+            } else {
+                return liNew ;
+            }
+        }
+
+        // Handle data
+        lzMod += ufPutDta(asFilOrg, asFilOut, liOpr, liInp, lzMod) ;
+    } /* while ! EOF */
+
+    return EOF ; // we
+} /* ufGetDta */
+
 /*******************************************************************************
 * Patch function
 *******************************************************************************
@@ -127,6 +238,164 @@ off_t ufGetInt( FILE *lpFil ){
 void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
 {
   int liInp ;         /* Current input from patch file          */
+  int liDbl = EOF ;   /* Pending byte (EOF = no pending bye)    */
+  int liOpr ;         /* Current operand                        */
+  off_t lzOff ;       /* Current operand's offset               */
+  off_t lzPosOrg=0;
+  off_t lzPosNew=0;
+
+  uchar lcDta[BLKSZE];
+
+  liOpr = 0 ;   // no operator
+  while (liOpr != EOF) {
+    // Read operand from input
+    if (liOpr == 0) {
+        liInp = getc(asFilPch);
+        if (liInp == EOF)
+            break ;
+
+        // Handle ESC <opr>
+        if (liInp == ESC) {
+            liDbl = getc(asFilPch);
+            switch (liDbl) {
+                case EQL:
+                case DEL:
+                case BKT:
+                case MOD:
+                case INS:
+                    liOpr=liDbl;
+                    liDbl=EOF;
+                    liInp=EOF;
+                    break ; // new operator found, all ok !
+                case EOF:
+                    // serious error, let's call this a trailing byte
+                    fprintf(stderr, "Warning: unexpected trailing byte at end of file, patch file may be corrupted.\n") ;
+                    exit(EXI_ERR);
+                    break ;
+                default:
+                    // hmmm, an ESC xxx or ESC ESC : this is awkward!
+                    // try to resolve by having two pending bytes: liInp and liDbl
+                    if (liOpr > 0) liOpr=0;
+                    break ;
+            }
+        } else {
+            liOpr = 0;    // it's not an operator sequence (gaining two bytes)
+        }
+
+        // If an ESC <opr> is missing, set default operator based on previous operator
+        if (liOpr == 0 || liInp != EOF) {
+            liOpr=MOD ; // the default operator
+        }
+    } else {
+        liInp = EOF ;
+    }
+
+	// Execute the new operator
+    switch(liOpr) {
+        case MOD:
+            liOpr = ufGetDta(asFilOrg, asFilPch, asFilOut, liOpr, lzOff, liInp, liDbl) ;
+
+            if (giVerbse == 1) {
+               fprintf(stddbg, "" P8zd " " P8zd " MOD %" PRIzd "\n",
+                      jftell(asFilOrg), jftell(asFilOut) - lzOff, lzOff) ;
+               lzPosOrg += lzOff ;
+               lzPosNew += lzOff ;
+            }
+
+            // skip modified bytes on source file
+            if (jfseek(asFilOrg, lzOff, SEEK_CUR) != 0) {
+                fprintf(stderr, "Could not position on original file (seek %" PRIzd ").\n",
+                        lzOff);
+                exit(EXI_SEK);
+            }
+            break ;
+
+        case INS:
+          liOpr = ufGetDta(asFilOrg, asFilPch, asFilOut, liOpr, lzOff, liInp, liDbl) ;
+          if (giVerbse == 1) {
+            fprintf(stddbg, "" P8zd " " P8zd " INS %" PRIzd "\n",
+                    jftell(asFilOrg), jftell(asFilOut) - lzOff, lzOff)   ;
+            lzPosNew += lzOff ;
+          }
+          break ;
+
+        case DEL:
+          lzOff = ufGetInt(asFilPch);
+          if (giVerbse >= 1) {
+            fprintf(stddbg, "" P8zd " " P8zd " DEL %" PRIzd "\n",
+                    jftell(asFilOrg), jftell(asFilOut), lzOff)  ;
+            lzPosOrg += lzOff ;
+          }
+
+          if (jfseek(asFilOrg, lzOff, SEEK_CUR) != 0) {
+            fprintf(stderr, "Could not position on original file (seek %" PRIzd " + %" PRIzd ").\n",
+                    lzOff);
+            exit(EXI_SEK);
+          }
+          liOpr = 0;  // to read next operator from input
+          break ;
+
+        case EQL:
+          lzOff = ufGetInt(asFilPch);
+          if (giVerbse >= 1) {
+            fprintf(stddbg, "" P8zd " " P8zd " EQL %" PRIzd "\n",
+                    jftell(asFilOrg), jftell(asFilOut), lzOff) ;
+            lzPosOrg += lzOff ;
+            lzPosNew += lzOff ;
+          }
+
+          while (lzOff > BLKSZE) {
+              if (fread(&lcDta, 1, BLKSZE, asFilOrg ) != BLKSZE) {
+                  fprintf(stderr, "Error reading original file.\n");
+                  exit(EXI_RED);
+              }
+              if (fwrite(&lcDta, 1, BLKSZE, asFilOut) != BLKSZE) {
+                  fprintf(stderr, "Error writing output file.\n");
+                  exit(EXI_WRI);
+              }
+              lzOff-=BLKSZE;
+          }
+          if (lzOff > 0){
+              if (fread(&lcDta, 1, lzOff, asFilOrg) != (size_t) lzOff) {
+                  fprintf(stderr, "Error reading original file.\n");
+                  exit(EXI_RED);
+              }
+              if (fwrite(&lcDta, 1, lzOff, asFilOut) != (size_t) lzOff) {
+                  fprintf(stderr, "Error writing output file.\n");
+                  exit(EXI_WRI);
+              }
+          }
+          liOpr = 0;  // to read next operator from input
+          break ;
+
+        case BKT:
+          liOpr = BKT ;
+          lzOff = ufGetInt(asFilPch) ;
+          if (giVerbse >= 1) {
+            fprintf(stddbg, "" P8zd " " P8zd " BKT %" PRIzd "\n",
+                    jftell(asFilOrg), jftell(asFilOut), lzOff)   ;
+            lzPosOrg -= lzOff ;
+          }
+
+          if (jfseek(asFilOrg, - lzOff, SEEK_CUR) != 0) {
+            fprintf(stderr, "Could not position on original file (seek back %" PRIzd " - %" PRIzd ").\n",
+                    lzOff);
+            exit(EXI_SEK);
+          }
+          liOpr = 0;  // to read next operator from input
+          break ;
+    }
+  } /* while ! EOF */
+
+  if (giVerbse >= 1) {
+      fprintf(stddbg, P8zd" " P8zd " EOF\n",
+              jftell(asFilOrg), jftell(asFilOut))  ;
+  }
+}
+
+void jpatchOld ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
+{
+  int liInp ;         /* Current input from patch file          */
   int liOpr ;         /* Current operand                        */
   off_t lzOff ;       /* Current operand's offset               */
   off_t lzMod = 0;    /* Number of bytes to skip on MOD         */
@@ -135,16 +404,17 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
 
   uchar lcDta[BLKSZE];
 
-  liOpr = ESC ;
+  liOpr = EQL ;
   while ((liInp = getc(asFilPch)) != EOF) {
-	// Parse an operator: ESC liOpr [lzOff]
+	// Parse an operator: [ESC] liOpr [lzOff]
     if (liInp == ESC) {
       liInp = getc(asFilPch);
       switch(liInp) {
         case MOD:
           liOpr = MOD;
           if (giVerbse == 1) {
-            fprintf(stddbg, "" P8zd " " P8zd " MOD ...    \n", jftell(asFilOrg)+lzMod-1, jftell(asFilOut)) ;
+            fprintf(stddbg, "" P8zd " " P8zd " MOD ...    \n",
+                    jftell(asFilOrg)+lzMod-1, jftell(asFilOut)) ;
           }
           lbChg = true;
           break ;
@@ -167,7 +437,8 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
           }
 
           if (jfseek(asFilOrg, lzOff + lzMod, SEEK_CUR) != 0) {
-            fprintf(stderr, "Could not position on original file (seek %" PRIzd " + %" PRIzd ").\n", lzOff, lzMod);
+            fprintf(stderr, "Could not position on original file (seek %" PRIzd " + %" PRIzd ").\n",
+                    lzOff, lzMod);
             exit(EXI_SEK);
           }
           lzMod = 0;
@@ -248,8 +519,10 @@ void jpatch ( FILE *asFilOrg, FILE *asFilPch, FILE *asFilOut )
     }
 
     if ( lbChg ) {
+      // Operation mode has changed, read the next byte
       lbChg = false ;
     } else {
+      // Perform the current operation
       switch (liOpr) {
         case DEL: break;
         case EQL: break;

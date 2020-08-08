@@ -111,15 +111,15 @@ public:
 	 * @param   akCurHsh    hash key (in & out)
 	 * @param   aiEql       equal-chars count
 	 */
-	void hash ( int const acNew, hkey &akCurHsh, int const aiEql ) const {
-	    //akCurHsh =  (akCurHsh << 1) ^ acNew  ;
-	    akCurHsh =  (akCurHsh * 2) + acNew + aiEql ; // faster
-
-	    #if debug
-	    if (JDebug::gbDbg[DBGHSK])
-	        fprintf(JDebug::stddbg, "Hash Key %" PRIhkey " %x %c\n", akCurHsh, acNew,
-	                (acNew>=32 && acNew <= 127)?acNew:' ');
-	    #endif
+	inline hkey hash ( hkey const akCurHsh, int &acOld, int const acNew, int &aiEql) const {
+        if (acOld == acNew) {
+	        if (aiEql < SMPSZE) aiEql ++;
+	    } else {
+	        acOld = acNew ;
+	        if (aiEql > 0)
+	            aiEql = 0;
+	    }
+        return (akCurHsh * 2) + acNew + aiEql ;
 	}
 
 	/* Return the (un)reliability range: an estimate of the number of bytes to verify

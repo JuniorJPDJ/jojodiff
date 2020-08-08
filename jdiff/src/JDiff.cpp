@@ -88,8 +88,8 @@
 #endif
 #pragma message "INFO: PRIzd = " XSTR(PRIzd)
 
-#define PGSMRK 0x100000       // Progress mark: show progress in Mb (1024 * 1024 or 0x400 x 0x400)
-#define PGSMSK 0xffffff       // Progress mask: show progress every 16Mb when (lzPos & PGSMSG == 0)
+#define PGSMRK 0x100000        // Progress mark: show progress in Mb (1024 * 1024 or 0x400 x 0x400)
+#define PGSMSK 0x1ffffff       // Progress mask: show progress every 32Mb when (lzPos & PGSMSG == 0)
 
 namespace JojoDiff {
 
@@ -100,24 +100,24 @@ JDiff::JDiff(
     JFile * const apFilOrg,     /* Original file */
     JFile * const apFilNew,     /* New file */
     JOut  * const apOut,        /* Output patch file */
-    const int aiHshSze,         /* Hashtable size */
+    const int aiHshSze,         /* Hashtable size in MB */
     const int aiVerbse,         /* Verbosity level: between 0 and 3 */
     const int abSrcBkt,         /* Allow backtracking on original file (default: yes) */
     const int aiSrcScn,         /* Scan source-file: 0=no, 1=yes, 2=done */
     const int aiMchMax,         /* Maximum matches to search for */
     const int aiMchMin,         /* Minimum matches to search for */
-    const int aiAhdMax,         /* Ahead buffer size (unused ?) */
+    const int aiAhdMax,         /* Lookahead maximum (in bytes) */
     const bool abCmpAll         /* Compare all matches ? */
 ) : mpFilOrg(apFilOrg), mpFilNew(apFilNew), mpOut(apOut),
     miVerbse(aiVerbse), mbSrcBkt(abSrcBkt),
-    miMchMax(aiMchMax > MCH_MAX ? MCH_MAX : aiMchMax),
+    miMchMax(aiMchMax),
     miMchMin(aiMchMin > miMchMax ? miMchMax - 1 : aiMchMin),
     miAhdMax(aiAhdMax<1024?1024:aiAhdMax),
     mbCmpAll(abCmpAll), miSrcScn(aiSrcScn),
     mzAhdOrg(0), mzAhdNew(0), mlHshOrg(0), mlHshNew(0), giHshErr(0)
 {
 	gpHsh = new JHashPos(aiHshSze) ;
-	gpMch = new JMatchTable(gpHsh, mpFilOrg, mpFilNew, abCmpAll);
+	gpMch = new JMatchTable(gpHsh, mpFilOrg, mpFilNew, aiMchMax, abCmpAll);
 }
 
 /*
@@ -304,7 +304,7 @@ int JDiff::jdiff()
 } /* jdiff */
 
 /**
- * Flush output
+ * @brief Flush pending EQL's
  */
 void JDiff::ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql, bool &lbEql) const {
     /* Output accumulated equals */
@@ -348,14 +348,19 @@ int JDiff::ufFndAhd (
     int liRlb;          /**< Reliability range for current hashtable        */
 
     int liFnd;          /**< Number of matches found                        */
-    int liFre;          /**< Free space in match table                      */
-    int liSft;          /**< 1 = hard look-ahead, 2 = soft look-ahead       */
+    int liSftOrg;       /**< 1 = hard look-ahead, 2 = soft look-ahead       */
+    int liSftNew;       /**< 1 = hard look-ahead, 2 = soft look-ahead       */
+
+    static bool lbFre=true;     /**< false = match table is full, cleanup needed   */
 
     /* Set Lap for progress counter */
     if (miVerbse > 1) lzLap = azRedNew + PGSMRK ;
 
-    /* Start with hard lookahead unless the minimum number of matches to find == 0 */
-    liSft = ((miMchMin == 0) ? 2 : 1) ;
+    /* Start with hard lookahead unless the minimum number of matches to find is 0 */
+    liSftOrg = ((miMchMin == 0) ? 2 : 1) ;
+
+    /* Start with hard lookahead on new file */
+    liSftNew = 2 ;
 
     /* Prescan the source file to build the hashtable */
     switch (miSrcScn) {
@@ -372,7 +377,8 @@ int JDiff::ufFndAhd (
         // incremental sourcefile scanning, soft-reading part
         // check if mzAhdOrg is (again) in the buffer
         if (mzAhdOrg > 0 && miValOrg == EOB){
-            miValOrg = mpFilOrg->get(mzAhdOrg, 2) ;
+            // reread the EOB-position to check if EOB is gone
+            miValOrg = mpFilOrg->get(mzAhdOrg, liSftOrg) ;
 
             // check if the source position has jumped forward
             if (miValOrg == EOB && azRedOrg > mzAhdOrg){
@@ -382,25 +388,53 @@ int JDiff::ufFndAhd (
 
         // (re-)initialize the hash function
         if (mzAhdOrg==0){
-            // scan the part of the source file around the reading position
-            mzAhdOrg=mpFilOrg->getBufPos();
+            // scan the part of the source file available within the buffer
+            mzAhdOrg = mpFilOrg->getBufPos() - 1; // -1 for ++mzAhdOrg
+
+            // initialize the hash function
             mlHshOrg = 0 ;
             miEqlOrg = 0 ;
-            miValOrg = 0 ;
+            miPrvOrg = EOF ;
+            if (mzAhdOrg == -1 )
+                liMax = SMPSZE - 1;         // to initialize mkHsh (miEql=0 is correct)
+            else
+                liMax = SMPSZE * 2 - 1;     // to initialize miEql and mkHsh
+            for (liIdx = 0; liIdx < liMax; liIdx++) {
+                miValOrg = mpFilOrg->get(++ mzAhdOrg, liSftOrg) ;
+                if (miValOrg <= EOF)
+                    break ;
+                mlHshOrg = gpHsh->hash(mlHshOrg, miPrvOrg, miValOrg, miEqlOrg) ;
 
-            // initialize the hash function (aiSft == 2 to read from memory)
-            miValOrg = mpFilOrg->get(mzAhdOrg, 2) ;
-            for (liIdx=0;(liIdx < SMPSZE - 1) && (miValOrg > EOF); liIdx++){
-               gpHsh->hash(miValOrg, mlHshOrg, miEqlOrg) ;
-               ufFndAhdGet(mpFilOrg, ++ mzAhdOrg, miValOrg, miEqlOrg, 2) ;
+                // The following line needs some explication.
+                // We want to terminate the initialization ASAP, every byte counts in -ff mode
+                // To simplify, consider SMPSZE == 8, so we need 7 valid miEql's to initialize
+                // Take for example an initialization starting at position 4 (hex data)
+                //    mzAhd :   4 5 6 7 8 9 A B C D E F ...
+                //    miVal :   0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4  ...
+                //    miPrv : EOF 0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4 ...
+                //    miEql :   0 1 2 3 0 0 0 0 0 0 0 ...
+                //    liIdx :   0 1 2 3 4 5 6 7 8 9 A B C ...
+                //    init            +-----------+
+                // We don't know if position 3 is 0 or not, so we don't know what value miEql
+                // at position 4 should have. So the first four bytes cannot be used,
+                // because miEql may not be correct.
+                // As soon as miEql is reset to 0 by miPrv != miVal, miEql becomes correct
+                // and initialization will be correct after 7 more bytes (position D in the example)
+                // Reset can be detected by miEql != liIdx. Hence, when miEql != liIdx,
+                // we can reduce liMax to liIdx + 7 (or better SMPSZE - 1) and add more bytes
+                // to the index hashtable.
+                if (miEqlOrg != liIdx && liMax > liIdx + (SMPSZE - 1))
+                    liMax = liIdx + (SMPSZE - 1) ;
             }
         }
 
         // scan the sourcefile till the buffer is exhausted
-        for (liMax=miAhdMax; liMax > 0 && miValOrg > EOF; liMax --){
-          gpHsh->hash(miValOrg, mlHshOrg, miEqlOrg) ;
-          gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
-          ufFndAhdGet(mpFilOrg, ++ mzAhdOrg, miValOrg, miEqlOrg, 2) ;
+        for (liMax=miAhdMax; liMax > 0 ; liMax --) {
+            miValOrg = mpFilOrg->get(++ mzAhdOrg, liSftOrg) ;
+            if (miValOrg <= EOF)
+                break ;
+            mlHshOrg = gpHsh->hash(mlHshOrg, miPrvOrg, miValOrg, miEqlOrg) ;
+            gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
         }
         break ;
     } /* scan source file - build hashtable */
@@ -419,38 +453,49 @@ int JDiff::ufFndAhd (
     * range. Once a minimum number of potential solutions is found, the lookahead
     * may again be reduced to the reliability range (se below).
     */
-    liRlb = liMax = gpHsh->get_reliability();
-    if (liMax < miAhdMax){
-        // a lookahead has been specified
-        liMax = miAhdMax;
+    liRlb = gpHsh->get_reliability() ;
+    if (liRlb < miAhdMax - 2 * SMPSZE){
+        // search for the specified lookahead / buffersize
+        liMax = miAhdMax - 2 * SMPSZE ;
+    } else {
+        // search at least the reliability distance
+        liMax = liRlb  ;
     }
 
     /*
     * How many bytes to look back ?
-    * In theory: no, it makes no sense to look back
+    * In theory: none, it makes no sense to look back
     * In practice:
     * - looking back avoids the need to reinitialize the hash function
-    * - re-initialization of the hash function is not 100% correct if miEqlNew > 0
+    * - re-initialization of the hash function can take up to SMPSZE * 2 bytes
     * - looking back allows to keep the existing match-table up-to-date
-    * These are the reasons to look back.
+    * Therefore, we allow for some look back.
     */
-//@    liBck = liRlb ;
-    //if (liBck < 1024)   // just a reasonable tradeoff between
-      //  liBck = 1024 ;  // reinitialization and a probably useless lookback
-
     liBck = (azRedNew - mzAhdNew);
     if (liBck < 0)
+        // mzAhdNew is stil ahead of azRedNew from a previous lookahead
+        // continue where the previous left off
         liBck= 0 ;
-    else if (liBck > liRlb * 2)
-        liBck=liRlb+SMPSZE ;
+    else if (liBck > liRlb + 2 * SMPSZE - 1)
+        // Go back for the reliability range + 2 * SMPSZE to anticipate a reinitialization
+        liBck=liRlb + 2 * SMPSZE - 1;
 
 
     /* Cleanup the old matches */
-    liFnd=gpMch->cleanup(azRedNew - liBck);
-    liFre=MCH_MAX-liFnd ;
+    liFnd = gpMch->cleanup(azRedNew, liBck + liRlb);
+    if (liFnd < 0){
+        // a best match is already available !
+        if (liMax > liRlb)
+            liMax=liRlb ;   // reduce search (but not to zero)
+        liFnd=-liFnd;
+    }
+    lbFre=(miMchMax-liFnd > 0);
 
     /* If there's room to work */
-    if (liFre > 0) {
+    if (lbFre > 0) {
+        // Set lookahead base position
+        mpFilNew->set_lookahead_base(azRedNew);
+
         // Start with soft or hard reading */
         if (liFnd >= miMchMin){
             // If there's still a "large" number of matches,
@@ -459,7 +504,7 @@ int JDiff::ufFndAhd (
             //liFnd = liFnd - (MCH_MAX - liFnd) ;  // can't reduce more
             //if (liFnd < miMchMin)
             //    liFnd=miMchMin ;
-            liSft = 2 ;
+            //@liSftNew = 2 ;
         }
 
         /*
@@ -471,10 +516,10 @@ int JDiff::ufFndAhd (
         if (miValNew == EOB){
             // reread the EOB, unless a reset will be done anyway
             if (mzAhdNew + liBck < azRedNew)
-                liBck = liBck ; //@debug // reset lookahead will be done anyway, don't try to re-read
+                ; // reset lookahead will be done anyway, don't try to re-read
             else {
                 // re-read, maybe data is now available
-                miValNew = mpFilNew->get(mzAhdNew, liSft) ;
+                miValNew = mpFilNew->get(mzAhdNew, liSftNew) ;
 
                 // force a reset if re-read failed
                 if (miValNew == EOB)
@@ -484,30 +529,41 @@ int JDiff::ufFndAhd (
         if (mzAhdNew == 0 || mzAhdNew + liBck < azRedNew)  {
             // Don't go back more than the buffer allows (to avoid EOB)
             mzAhdNew = mpFilNew->getBufPos() ;
-            if (mzAhdNew < 0) mzAhdNew = 0 ;
 
             // Set looking back position, but never before the buffer
-            if (azRedNew > liBck + mzAhdNew){
-                mzAhdNew = azRedNew - liBck ;
+            if (azRedNew > mzAhdNew + liBck){
+                mzAhdNew = azRedNew - liBck;
+                if (mzAhdNew < 0)
+                    mzAhdNew = 0;
             }
 
-            // Initialize hash
-            miEqlNew = 0 ;
-            mlHshNew = 0 ;
-            miValNew = mpFilNew->get(mzAhdNew, liSft) ;
-            for (liIdx=0;(liIdx < SMPSZE - 1) && (miValNew > EOF); liIdx++){
-                gpHsh->hash(miValNew, mlHshNew, miEqlNew) ;
-                ufFndAhdGet(mpFilNew, ++ mzAhdNew, miValNew, miEqlNew, liSft) ;
+            // Initialize hash: at the start of the file (mzAhdNew == 0),
+            // SMPSZE suffices to initialize, but within the file (mzAhdNew > 0),
+            // in a worst case, we first need SMPSZE to initialize miEqlNew and
+            // then another SMPSZE to initialize the hash
+            if (mzAhdNew == 0)
+                liBck = SMPSZE - 1 ;        // to initialize mkHsh (miEql=0 is correct)
+            else
+                liBck = SMPSZE * 2 - 1 ;    // to initialize mkHsh and miEql
+            mzAhdNew -- ; // switch to pre-increments
+            mlHshNew = 0;
+            miEqlNew = 0;
+            miPrvNew = EOF;
+            for (liIdx = 0 ; liIdx < liBck; liIdx++) {
+                miValNew = mpFilNew->get(++ mzAhdNew, liSftNew) ;
+                if (miValNew <= EOF)
+                    break ;
+                mlHshNew = gpHsh->hash(mlHshNew, miPrvNew, miValNew, miEqlNew) ;
+
+                // See explication above at initialization of mlHshOrg
+                if (liIdx != miEqlNew && liBck > liIdx + (SMPSZE - 1))
+                    liBck = liIdx + (SMPSZE - 1) ;
             }
         }
 
-        // Adapt liMax to lookback
-        if (mzAhdNew < azRedNew) {
-            liBck = (azRedNew - mzAhdNew);
-            liMax += liBck;
-        } else {
-            liBck = 0;
-        }
+        /* Add the resulting lookback to liMax */
+        if (mzAhdNew < azRedNew)
+            liMax += (azRedNew - mzAhdNew) ;
 
         /* Do not backtrace before lzBseOrg */
         lzBseOrg = (mbSrcBkt?0:mpFilOrg->getBufPos()) ;
@@ -515,10 +571,13 @@ int JDiff::ufFndAhd (
         /*
         * Build the table of matches
         */
-        //@&& (liFnd < miMchMax)
-        while ((liMax > 0) && (miValNew > EOF )) {
+        while ((liMax > 0)) { //@ && (miValNew > EOF )) {
             /* hash the new value */
-            gpHsh->hash(miValNew, mlHshNew, miEqlNew) ;
+            miValNew = mpFilNew->get(++ mzAhdNew, liSftNew) ;
+            if (miValNew <= EOF)
+                break ;
+            mlHshNew = gpHsh->hash(mlHshNew, miPrvNew, miValNew, miEqlNew) ;
+            liMax --;
 
             /* lookup the new value in the hashtable and add it to the table of matches...*/
             if (gpHsh->get(mlHshNew, lzFndOrg)) {
@@ -529,7 +588,11 @@ int JDiff::ufFndAhd (
                     if (liIdx < 0){
                         // panic: table is full unexpectedly, try to cleanup and add again
                         // normally we should never pass here, kept for just-in-case
-                        liFnd = gpMch->cleanup(azRedNew);
+                        liFnd = gpMch->cleanup(azRedNew, 0);
+                        if (liFnd < 0){
+                            liFnd=-liFnd;
+                        }
+                        lbFre = (miMchMax-liFnd > 0);
                         liIdx = gpMch->add(lzFndOrg, mzAhdNew, azRedNew);
                         if (liIdx < 0) {
                             // really full: this should not happen, write out an error
@@ -543,44 +606,46 @@ int JDiff::ufFndAhd (
                     } else if (liIdx == 0){
                         // solution added, but table is now full
                         // try to cleanup
-                        liFnd = gpMch->cleanup(azRedNew);
+                        liFnd = gpMch->cleanup(azRedNew,0);
+                        if (liFnd < 0){
+                            liFnd=-liFnd;
+                        }
+                        lbFre=(miMchMax-liFnd > 0);
+                        if (! lbFre)
+                            break ;
                         if (mzAhdNew > azRedNew) liFnd --;  // will be reincremented below
-                    } else if (liIdx==4) {
-                        // this seems to be a very good solution
+                    } else if (liIdx == 4) {
+                        // This seems to be a very good solution.
+                        // However, due to the unreliable nature of the checksums and the hash-table,
+                        // the first good solution is not always the best one,
+                        // but a better one should be found within the reliability range.
+                        //
+                        // Why ? Because the reliability range estimates the number of bytes
+                        // to search before finding all solutions hidden behind the unreliability.
+                        // So after the (estimated) reliability range, no better solution should be found anymore.
                         // reduce the lookahead to be sure and to improve performance
-                        liMax = liRlb ;
+                        if (liMax > liRlb)
+                            liMax = liRlb ;
+                    } else if (liIdx == 5) {
+                        // Perfect solution found : Stop right now !
+                        break ;
                     }
 
                     // solution added
                     if (liIdx == 0 or liIdx == 1 or liIdx == 4){
-                        liFre-- ;
-                        if (liFre == 0)
-                            break ;
                         if (mzAhdNew > azRedNew) {    // do not count lookback matches
                             liFnd ++ ;
 
-                            if (liFnd >= miMchMin)  liSft=2 ;   // switch to soft reading
-                            if (liFnd >= miMchMax) break;     // stop lookahead
-
-                            // Reduce the lookahead range when a minimum number of solutions has been found
-                            if ((liFnd >= miMchMin) && (liMax > liRlb * 2)) {
-                                // Due to the unreliable nature of the checksums and the hash-table,
-                                // the first solution is not always the best one,
-                                // but a better one should be found within the reliability range.
-                                //
-                                // Why ? Because the reliability range estimates the number of bytes
-                                // to search before finding any solutions hidden behind the unreliability.
-                                // So after the (estimated) reliability range, no better solution will be found.
-                                // liMax = liRlb * 2;
-                            }
+                            if (liFnd >= miMchMin) liSftNew=2 ;   // switch to soft reading
+                            if (liFnd >= miMchMax) break;         // stop lookahead
                         }
                     } /* solution added */
                 } /* if usable */
             } /* lookup */
 
           /* get next value from file */
-          ufFndAhdGet(mpFilNew, ++ mzAhdNew, miValNew, miEqlNew, liSft) ;
-          liMax -- ;
+          //@ufFndAhdGet(mpFilNew, ++ mzAhdNew, miValNew, miEqlNew, liSftNew) ;
+          //@liMax -- ;
 
           /* show progress */
           if ((miVerbse > 1) && (lzLap <= mzAhdNew)) {
@@ -590,98 +655,82 @@ int JDiff::ufFndAhd (
         } /* while ! EOF */
     } /* if liFnd <= miMchMax */
 
-  /*
-   * Check for errors
-   */
-  if (miValNew < EOB || miValOrg < EOB){
-      return (miValNew < miValOrg) ? miValNew : miValOrg;
-  }
-
-  /* show progress */
-  if ((miVerbse>1) && (lzLap > azRedNew+PGSMRK)){
-    fprintf(JDebug::stddbg, "+%-12" PRIzd "...\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", (mzAhdNew - azRedNew) / PGSMRK);
-  }
-
-  /*
-   * Get the best match and calculate the offsets
-   */
-  if (! gpMch->get(azRedOrg, azRedNew, /* out */ lzFndOrg, lzFndNew))
-  { azSkpOrg = 0 ;
-    azSkpNew = 0 ;
-    azAhd    = (mzAhdNew - azRedNew) - gpHsh->get_reliability() ;
-    if (azAhd < SMPSZE) azAhd = SMPSZE ;
-    return 0 ;
-  }  else  {
-    if (lzFndOrg >= azRedOrg)
-    { if (lzFndOrg - azRedOrg >= lzFndNew - azRedNew)
-      { /* go forward on original file */
-        azSkpOrg = lzFndOrg - azRedOrg + azRedNew - lzFndNew ;
-        azSkpNew = 0 ;
-        azAhd    = lzFndNew - azRedNew ;
-      } else {
-        /* go forward on new file */
-        azSkpOrg = 0;
-        azSkpNew = lzFndNew - azRedNew + azRedOrg - lzFndOrg ;
-        azAhd    = lzFndOrg - azRedOrg ;
-      }
-    } else {
-      /* backtrack on original file */
-      azSkpOrg = azRedOrg - lzFndOrg + lzFndNew - azRedNew ;
-      if (azSkpOrg < azRedOrg)
-      { azSkpNew = 0 ;
-        azSkpOrg = - azSkpOrg ;
-        azAhd = lzFndNew - azRedNew ;
-      }
-      else /* do not bactrace before beginning of file */
-      { azSkpNew = azSkpOrg - azRedOrg ;
-        azSkpOrg = - azRedOrg ;
-        azAhd = (lzFndNew - azRedNew) - azSkpNew ;
-      }
-
-      /* reset ahead position when backtracking */
-      mzAhdOrg = 0 ;
+    /* Check for errors  */
+    if (miValNew < EOB || miValOrg < EOB) {
+        return (miValNew < miValOrg) ? miValNew : miValOrg;
     }
 
-    /* clear searh progress */
-    if ((miVerbse>1) && (lzLap > azRedNew+PGSMRK)){
+    /* show progress */
+    if ((miVerbse>1) && (lzLap > azRedNew+PGSMRK))  {
+        fprintf(JDebug::stddbg, "+%-12" PRIzd "...\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b", (mzAhdNew - azRedNew) / PGSMRK);
+    }
+
+    /*
+     * Get the best match and calculate the offsets
+     */
+    lbFre = gpMch->getbest(azRedOrg, azRedNew, /* out */ lzFndOrg, lzFndNew);
+
+    /* clear search progress */
+    if ((miVerbse>1) && (lzLap > azRedNew+PGSMRK)) {
         fprintf(JDebug::stddbg, "                \b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b") ;
     }
 
-    return 1 ;
-  }
+    /* Calculate the resulting offsets */
+    if (azRedOrg == lzFndOrg && azRedNew == lzFndNew)  {
+        // No solution has been found. Maybe the search window size is too small, or
+        // the hashtable, or the buffers, or maybe the files are simply different.
+        // Anyway, iterating over the same search windows makes no sense, except
+        // for the part covered by the (un)reliability range.
+        azSkpOrg = 0 ;
+        azSkpNew = 0 ;
+        azAhd    = (mzAhdNew - azRedNew) ; //@ - gpHsh->get_reliability() ; // - SMPSZE * 2 ;
+        if (azAhd < SMPSZE)
+            azAhd = SMPSZE ;
+        return 0 ;
+    }  else  {
+        if (lzFndOrg >= azRedOrg) {
+            if (lzFndOrg - azRedOrg >= lzFndNew - azRedNew) {
+                /* go forward on original file */
+                azSkpOrg = lzFndOrg - azRedOrg + azRedNew - lzFndNew ;
+                azSkpNew = 0 ;
+                azAhd    = lzFndNew - azRedNew ;
+            } else {
+                /* go forward on new file */
+                azSkpOrg = 0;
+                azSkpNew = lzFndNew - azRedNew + azRedOrg - lzFndOrg ;
+                azAhd    = lzFndOrg - azRedOrg ;
+            }
+        } else {
+            /* backtrack on original file */
+            azSkpOrg = azRedOrg - lzFndOrg + lzFndNew - azRedNew ;
+            if (azSkpOrg < azRedOrg) {
+                azSkpNew = 0 ;
+                azSkpOrg = - azSkpOrg ;
+                azAhd = lzFndNew - azRedNew ;
+            } else { /* do not bactrace before beginning of file */
+                azSkpNew = azSkpOrg - azRedOrg ;
+                azSkpOrg = - azRedOrg ;
+                azAhd = (lzFndNew - azRedNew) - azSkpNew ;
+            }
+        }
+
+        return 1 ;
+    }
 } /* ufFndAhd */
 
 /**
- * @brief  Get next character from file (lookahead) and count number of equal chars
- *         in current sample.
- * @detail Auxiliary function to get next character and prepare the equal count for the hash
- *         function.
- * @param  apFil     File to read
- * @param  azPos     Position to read (will be incremented by one)
- * @param  aiVal     in: previous byte read, out: new byte read
- * @param  aiEql     Incremented by one if previous == new byte
- * @param  aiSft     Soft or hard read-ahead (see JFile.get)
- */
-void JDiff::ufFndAhdGet(JFile *apFil, const off_t &azPos,int &acVal, int &aiEql, int aiSft) const
-{
-    int lcNew = apFil->get(azPos, aiSft) ;
-    if (acVal != lcNew){
-        acVal = lcNew ;
-        if (lcNew > EOF && aiEql > 0) aiEql = 0 ;
-    }
-    else if (aiEql < SMPSZE) aiEql ++ ;
-}
-
-/**
- * Prescan the original file: calculates a hash-key for every 32-byte sample
- * in the left file and stores them with their position in a hash-table.
+ * @brief   Prescan the original file.
+ *
+ *          Calculates a hash-key for every 32-bytes sample
+ *          in the source file and stores them with their position in a hash-table.
  */
 int JDiff::ufFndAhdScn ()
 {
     hkey  lkHshOrg=0;     // Current hash value for original file
     int   liEqlOrg=0;     // Number of times current value occurs in hash value
-    int   lcValOrg;       // Current file value
-    off_t lzPosOrg=0;     // Position within original file
+    int   lcValOrg=0;     // Current  file value
+    int   lcValPrv=EOF;   // Previous file value
+    off_t lzPosOrg=-1;    // Position within original file
 
     int liIdx ;
 
@@ -690,25 +739,28 @@ int JDiff::ufFndAhdScn ()
     }
 
     /* Read SMPSZE-1 bytes (31 or 63) to initialize the hash function */
-    lcValOrg = mpFilOrg->get(lzPosOrg, 1) ;
-    for (liIdx=0; (liIdx < SMPSZE - 1) && (lcValOrg > EOF); liIdx++) {
-        gpHsh->hash(lcValOrg, lkHshOrg, liEqlOrg) ;
-        ufFndAhdGet(mpFilOrg, ++ lzPosOrg, lcValOrg, liEqlOrg, 1) ;
+    for (liIdx=0; (liIdx < SMPSZE - 1); liIdx++) {
+        lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+        if (lcValOrg <= EOF)
+            break ;
+        lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;
     }
 
     /* Build hashtable */
     if (miVerbse > 1) {
         /* slow version with user feedback */
         while (lcValOrg > EOF) {
-            gpHsh->hash(lcValOrg, lkHshOrg, liEqlOrg) ;
+            lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+            if (lcValOrg <= EOF)
+                break ;
+            lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;
             gpHsh->add(lkHshOrg, lzPosOrg, liEqlOrg) ;
+
             #if debug
                 if (JDebug::gbDbg[DBGAHH])
                     fprintf(JDebug::stddbg, "ufHshAdd(%2x -> %8"PRIhkey", "P8zd", %8d)\n",
                             lcValOrg, lkHshOrg, lzPosOrg, 0);
             #endif
-
-            ufFndAhdGet(mpFilOrg, ++ lzPosOrg, lcValOrg, liEqlOrg, 1) ;
 
             /* output position every 16MB */
             if ((lzPosOrg & PGSMSK) == 0) {
@@ -718,9 +770,11 @@ int JDiff::ufFndAhdScn ()
     } else {
         /* fast version, no user feedback nor debug */
         while (lcValOrg > EOF) {
-            gpHsh->hash(lcValOrg, lkHshOrg, liEqlOrg) ;
+            lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+            if (lcValOrg <= EOF)
+                break ;
+            lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;
             gpHsh->add(lkHshOrg, lzPosOrg, liEqlOrg) ;
-            ufFndAhdGet(mpFilOrg, ++ lzPosOrg, lcValOrg, liEqlOrg, 1) ;
         }
     }
 
