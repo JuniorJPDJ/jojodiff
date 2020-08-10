@@ -1,7 +1,7 @@
 /*
  * JFileAhead.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -35,8 +35,9 @@ namespace JojoDiff {
  */
 class JFileAhead: public JFile {
 public:
-    JFileAhead(FILE * apFil, const char *asFid, const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
     virtual ~JFileAhead();
+    JFileAhead(FILE * const apFil, char const * const asFid,
+               const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
 
 	/**
 	 * @brief Get byte at specified address and increment the address to the next byte.
@@ -51,6 +52,18 @@ public:
         const off_t &azPos,   /* position to read from                */
         const int aiTyp 	  /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
+
+ 	/**
+	 * @brief Get next byte
+	 *
+	 * Soft read ahead will return an EOB when date is not available in the buffer.
+	 *
+	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+	 * @return 			the read character or EOF or EOB.
+	 */
+	int get (
+	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	) ;
 
     /**
 	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -68,12 +81,12 @@ public:
 	 *
 	 * @return  -1=no buffering, > 0 : first position in buffer
 	 */
-	 off_t getBufPos() ;
+	 off_t getBufPos() const ;
 
     /**
      * Return number of seek operations performed.
      */
-    long seekcount();
+    long seekcount() const ;
 
 private:
     /**
@@ -105,27 +118,27 @@ private:
 
 private:
     /* Context */
-    const char *msFid;  /* file id (for debugging)                      */
-    FILE *mpFile;     /* file handle                                  */
+    char const * const msFid;   /**< file id (for debugging)              */
+    FILE * const mpFile;        /**< file handle                          */
 
     /* Settings */
-    long mlBufSze;      /* File lookahead buffer size                   */
-    int miBlkSze;       /* Read file in blocks of 4096 bytes            */
+    long mlBufSze;      /**< File lookahead buffer size                   */
+    int miBlkSze;       /**< Read file in blocks of 4096 bytes            */
 
     /* Buffer state */
-    long miRedSze;      /* distance between izPosRed to izPosInp        */
-    long miBufUsd;      /* number of bytes used in buffer               */
-    uchar *mpBuf;       /* read-ahead buffer                            */
-    uchar *mpMax;       /* read-ahead buffer end                        */
-    uchar *mpInp;       /* current position in buffer                   */
-    uchar *mpRed;       /* last position read from buffer				*/
-    off_t mzPosInp;     /* current position in file                     */
-    off_t mzPosRed;     /* last position read from buffer				*/
-    off_t mzPosEof;     /* eof position 			                    */
-    off_t mzPosBse;     /* base position for soft reading               */
+    long miRedSze;      /**< distance between izPosRed to izPosInp        */
+    long miBufUsd;      /**< number of bytes used in buffer               */
+    jchar *mpBuf;       /**< read-ahead buffer                            */
+    jchar *mpMax;       /**< read-ahead buffer end                        */
+    jchar *mpInp;       /**< current position in buffer                   */
+    jchar *mpRed;       /**< last position read from buffer			      */
+    off_t mzPosInp;     /**< current position in file                     */
+    off_t mzPosRed;     /**< last position read from buffer				  */
+    off_t mzPosEof;     /**< eof position 			                      */
+    off_t mzPosBse;     /**< base position for soft reading               */
 
     /* Statistics */
-    long mlFabSek ;      /* Number of times an fseek operation was performed  */
+    long mlFabSek ;     /**< Number of times an fseek operation was performed  */
 };
 }
 #endif /* JFILEAHEAD_H_ */

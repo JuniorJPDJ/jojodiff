@@ -1,7 +1,7 @@
 /*
  * JMatchTable.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -82,14 +82,14 @@ JMatchTable::JMatchTable (
     JFile  * const apFilNew,
     const int  aiMchSze,
     const bool abCmpAll)
-: mpHsh(apHsh), mpFilOrg(apFilOrg), mpFilNew(apFilNew), mbCmpAll(abCmpAll), miMchSze(aiMchSze)
+: mpHsh(apHsh), mpFilOrg(apFilOrg), mpFilNew(apFilNew), miMchSze(aiMchSze), mbCmpAll(abCmpAll)
 {
     if (miMchSze < 13)
         miMchSze = 13;
 
     // allocate matching table
     msMch = (rMch *) malloc(sizeof(rMch) * miMchSze) ;
-    #ifndef __MINGW32__
+    #ifdef JDIFF_THROW_BAD_ALLOC
     if ( msMch == null ) {
         throw bad_alloc() ;
     }
@@ -109,6 +109,7 @@ JMatchTable::JMatchTable (
 /* Destructor */
 JMatchTable::~JMatchTable() {
     free(msMch);
+    free(mpMch);
 }
 
 /* -----------------------------------------------------------------------------
@@ -367,7 +368,7 @@ bool JMatchTable::getbest (
     off_t lzTstNew ;        // test/found position in new file
     off_t lzTstOrg ;        // test/found position in old file
 
-    int liRlb = mpHsh->get_reliability() ;  // current unreliability range
+    //@int liRlb = mpHsh->get_reliability() ;  // current unreliability range
 
     #ifdef debug
     int liRlbMax=0;     // measured reliability distance
@@ -693,8 +694,8 @@ int JMatchTable::check (
             fprintf( JDebug::stddbg, ""P8zd" "P8zd" %2d %s (%c)%02x == (%c)%02x\n",
                      azPosOrg - liEql, azPosNew - liEql, liEql,
                      (liEql>EQLMIN)?"OK!":(lcOrg==EOB || lcNew==EOB)?"EOB":"NOK",
-                     (lcOrg>=32 && lcOrg <= 127)?lcOrg:' ',(unsigned char)lcOrg,
-                     (lcNew>=32 && lcNew <= 127)?lcNew:' ',(unsigned char)lcNew);
+                     (lcOrg>=32 && lcOrg <= 127)?lcOrg:' ',(uchar)lcOrg,
+                     (lcNew>=32 && lcNew <= 127)?lcNew:' ',(uchar)lcNew);
     #endif
 
     if (liEql > EQLMIN){

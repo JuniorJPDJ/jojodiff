@@ -13,7 +13,7 @@ optlst=("-vv -bb" "-vv --better" "-vv" "-vv --lazy" "-vv -ff" \
   "-vvck 1024")
 
 # default options
-optdef=("-vv -bb" "-vv --better -s" "-vv" "-vvs" "-vv --lazy" "-vv -ff")
+optdef=("-vv -bb" "-vv -b -s" "-vv" "-vv -s" "-vv -f" "-vv -ff")
 
 # pairwise testing
 optpw1=("-v" "-vv" "-vvv" "-v -c" "-s" "-a 783 -v" "-v -a 6248")   # 7, must be prime !
@@ -174,32 +174,24 @@ xdelta=$(which xdelta3)
             if [[ $lng == 1 ]]; then
               lng=0
               opt="${opt/-v /--verbose }"
-              opt="${opt/-vv/--verbose -v}"
+              opt="${opt/-vv /--verbose -v }"
               opt="${opt/-f /--lazy }"
-              opt="${opt/-ff/--lazy -f}"
+              opt="${opt/-ff /--lazy -f }"
               opt="${opt/-b /--better }"
-              opt="${opt/-bb/--better -b}"
+              opt="${opt/-bb /--better -b }"
               opt="${opt/-k /--block-size }"
               opt="${opt/-x /--search-max }"
+              opt="${opt/-s /--stdio }"
             fi
             if [[ $lng == 2 ]]; then
               lng=1
-              opt="${opt//-v /--verbose }"
-              opt="${opt//-vv /--verbose -verbose }"
-              opt="${opt//-f /--lazy }"
-              opt="${opt//-ff/--lazy -f}"
-              opt="${opt//-b /--better }"
-              opt="${opt//-bb /--better --better }"
+              opt="${opt//-vv /--verbose --verbose }"
               opt="${opt//-c /--console }"
               opt="${opt/-n /--search-min }"
             fi
             if [[ $lng == 3 ]]; then
-              opt="${opt//-v /--verbose }"
-              opt="${opt//-vv /--verbose -v }"
-              opt="${opt//-f /--lazy }"
-              opt="${opt//-ff /--lazy -f }"
-              opt="${opt//-b /--better }"
-              opt="${opt//-bb /--better -b }"
+              opt="${opt//-ff /--lazy --lazy }"
+              opt="${opt//-bb /--better --better }"
               opt="${opt//-p /--sequential-source }"
               opt="${opt//-q /--sequential-dest }"
               lng=2

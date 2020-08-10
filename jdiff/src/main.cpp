@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Jojo's Diff : diff on binary files
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -129,8 +129,10 @@
  * joheirba  v0.8.3p   Aug 2020 Reduce control bytes to patch file (default ops)
  * joheirba  v0.8.3q   Aug 2020 Refactored hash function: liEql logic included
  * joheirba  v0.8.3r   Aug 2020 Dynamic matching table.
- * joheirba  v0.8.3s   Aug 2020 Allow standard input inputfiles with "-"
+ * joheirba  v0.8.3s   Aug 2020 Allow standard input with "-"
  * joheirba  v0.8.3s   Aug 2020 Option -s for stdio instead of istream
+ * joheirba  v0.8.3t   Aug 2020 Integration of jpatct with JFile.getbuf
+ *                              Refactoring JFileIStreamAhead
  *
  *******************************************************************************/
 
@@ -192,10 +194,12 @@ using namespace std ;
 
 #include "JDefs.h"
 #include "JDiff.h"
+#include "JPatcht.h"
 #include "JOutBin.h"
 #include "JOutAsc.h"
 #include "JOutRgn.h"
 #include "JFile.h"
+#include "JFileOut.h"
 
 using namespace JojoDiff ;
 
@@ -233,35 +237,49 @@ struct option gsOptLng [] = {
 int main(int aiArgCnt, char *acArg[])
 {
     const char csStdInpOutNam[]="-";
-    const char *lcFilNamOrg;      /* Source filename                                  */
-    const char *lcFilNamNew;      /* Destination filename                             */
-    const char *lcFilNamOut;      /* Output filename (-=stdout)                       */
+    const char *lcFilNamOrg;      /**< Source filename                                  */
+    const char *lcFilNamNew;      /**< Destination filename                             */
+    const char *lcFilNamOut;      /**< Output filename (-=stdout)                       */
 
-    FILE  *lpFilOut;              /* Output file                                      */
+    FILE  *lpFilOut;              /**< Output file                                      */
 
     /* Default settings */
-    int liOutTyp = 0 ;            /* 0 = JOutBin, 1 = JOutAsc, 2 = JOutRgn            */
-    int liVerbse = 0;             /* Verbose level 0=no, 1=normal, 2=high             */
-    int lbSrcBkt = true;          /* Backtrace on sourcefile allowed?                 */
-    bool lbCmpAll = true ;        /* Compare even if data not in buffer?              */
-    int liSrcScn = 1 ;            /* Prescan source file: 0=no, 1=do, 2=done          */
-    int liMchMax = 512 ;          /* Maximum entries in matching table.               */
-    int liMchMin = 2 ;            /* Minimum entries in matching table.               */
-    int liHshMbt = 32 ;           /* Hashtable size in MB (* 1024 * 1024)             */
-    long llBufSze = 2 ;           /* Default file-buffers size in MB                  */
-    int liBlkSze = 8192 ;         /* Default block size (in bytes)                    */
-    int liAhdMax = 0;             /* Lookahead range (0=same as llBufSze)             */
-    int liHlp=0;                  /* -h/--help flag: 0=no, 1=-h, 2=-hh, 3=error       */
-    bool lbStdio=false;           /* use stdio                                        */
+    int liOutTyp = 0 ;            /**< 0 = JOutBin, 1 = JOutAsc, 2 = JOutRgn            */
+    int liVerbse = 0;             /**< Verbose level 0=no, 1=normal, 2=high             */
+    int lbSrcBkt = true;          /**< Backtrace on sourcefile allowed?                 */
+    bool lbCmpAll = true ;        /**< Compare even if data not in buffer?              */
+    int liSrcScn = 1 ;            /**< Prescan source file: 0=no, 1=do, 2=done          */
+    int liMchMax = 512 ;          /**< Maximum entries in matching table.               */
+    int liMchMin = 2 ;            /**< Minimum entries in matching table.               */
+    int liHshMbt = 32 ;           /**< Hashtable size in MB (* 1024 * 1024)             */
+    long llBufSze = 2 ;           /**< Default file-buffers size in MB                  */
+    int liBlkSze = 8192 ;         /**< Default block size (in bytes)                    */
+    int liAhdMax = 0;             /**< Lookahead range (0=same as llBufSze)             */
+    int liHlp=0;                  /**< -h/--help flag: 0=no, 1=-h, 2=-hh, 3=error       */
+    bool lbStdio=false;           /**< use stdio                                        */
+    bool liFun=0;                 /**< function: 0=jdiff, 1=jpatch, 2=both (test)       */
+    int liTst=0;                  /**< test to execute : 0 = normal, 1 etc... see JTest */
 
-    JDebug::stddbg = stderr ;     /* Debug and informational (verbose) output         */
+    JDebug::stddbg = stderr ;     /**< Debug and informational (verbose) output         */
 
     /* optional arguments parsing */
-    int liOptArgCnt=0 ;           /* number of options */
-    char lcOptSht;                /* short option code */
-    int liOptLng;                 /* long option index */
+    int liOptArgCnt=0 ;           /**< number of options */
+    char lcOptSht;                /**< short option code */
+    int liOptLng;                 /**< long option index */
 
     /* Read options */
+    char *lcCmd = acArg[0];
+    char *lcCmdTst = strrchr(lcCmd, '/');
+    if (lcCmdTst != null)
+        lcCmd = lcCmdTst + 1;
+    lcCmdTst = strrchr(lcCmd, '\\');
+    if (lcCmdTst != null)
+        lcCmd = lcCmdTst + 1;
+    if (strncasecmp(lcCmd, "jpatch", 6) == 0)
+        liFun=1 ;
+    else if (strncasecmp(lcCmd, "jtst", 4) == 0)
+        liFun=2;
+
     /* parse option-switches */
     while((lcOptSht = getopt_long(aiArgCnt, acArg, gcOptSht, gsOptLng, &liOptLng))!=EOF) {
         switch(lcOptSht) {
@@ -300,17 +318,12 @@ int main(int aiArgCnt, char *acArg[])
             lbCmpAll=false ;            // only compare data within the buffer
             liMchMin=0;                 // do not search out of buffer
             break;
-        case 's': // use stdio
-            lbStdio=! lbStdio ; /* switch */
-            break;
+
         case 'c': // verbose-stdout
             JDebug::stddbg = stdout;
             break;
         case 'h': // help
             liHlp++;
-            break;
-        case 'v': // "verbose",           no_argument
-            liVerbse++;
             break;
         case 'l': // "list-details",      no_argument
             liOutTyp = 1 ;
@@ -318,6 +331,23 @@ int main(int aiArgCnt, char *acArg[])
         case 'r': // "list-groups",       no_argument
             liOutTyp = 2 ;
             break;
+        case 's': // use stdio
+            lbStdio=! lbStdio ; /* switch */
+            break;
+        case 't':   // test: patch and unpatch in one go
+            liFun = 2 ;
+            if (optarg)
+                liTst = atoi(optarg);    // test number
+            else
+                liTst=0;
+            break ;
+        case 'u':   // unpatch
+            liFun = 1 ;
+            break ;
+        case 'v': // "verbose",           no_argument
+            liVerbse++;
+            break;
+
         case 'a': // search-ahead-size
             liAhdMax = atoi(optarg) / 2 * 1024 ;
             break;
@@ -515,6 +545,7 @@ int main(int aiArgCnt, char *acArg[])
 
     FILE *lfFilOrg = NULL ;
     FILE *lfFilNew = NULL ;
+
     if (lbStdio) {
         /* We always need a buffer */
         if (llBufSze == 0) {
@@ -543,20 +574,18 @@ int main(int aiArgCnt, char *acArg[])
     }
 
     #ifndef JDIFF_STDIO_ONLY
-    ifstream *liFilOrg = NULL ;
-    ifstream *liFilNew = NULL ;
-
+    ifstream liFilOrg;
+    ifstream liFilNew;
     if (! lbStdio) {
         /* Open first file */
         if (strcmp(lcFilNamOrg, csStdInpOutNam) == 0 )
             // One can see here that I'm not a real C++ programmer, sorry...
             // May change this when I have some more time
-            lpFilOrg = new JFileIStreamAhead(&cin, "Org",  llBufSze, liBlkSze);
+            lpFilOrg = new JFileIStreamAhead(cin, "Org",  llBufSze, liBlkSze);
         else {
-            liFilOrg = new ifstream();
-            liFilOrg->open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
+            liFilOrg.open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
 
-            if (liFilOrg->is_open()) {
+            if (liFilOrg.is_open()) {
                 if (llBufSze > 0) {
                     lpFilOrg = new JFileIStreamAhead(liFilOrg, "Org",  llBufSze, liBlkSze);
                 } else {
@@ -568,12 +597,11 @@ int main(int aiArgCnt, char *acArg[])
         /* Open second file */
         if (strcmp(lcFilNamNew, csStdInpOutNam) == 0 )
             // Same remark as above
-            lpFilNew = new JFileIStreamAhead(&cin, "New",  llBufSze, liBlkSze);
+            lpFilNew = new JFileIStreamAhead(cin, "New",  llBufSze, liBlkSze);
         else {
-            liFilNew = new ifstream();
-            liFilNew->open(lcFilNamNew, ios_base::in | ios_base::binary) ;
+            liFilNew.open(lcFilNamNew, ios_base::in | ios_base::binary) ;
 
-            if (liFilNew->is_open()) {
+            if (liFilNew.is_open()) {
                 if (llBufSze > 0) {
                     lpFilNew = new JFileIStreamAhead(liFilNew, "New",  llBufSze, liBlkSze);
                 } else {
@@ -594,7 +622,7 @@ int main(int aiArgCnt, char *acArg[])
         exit(EXI_SCD);
     }
 
-    /* Open output */
+     /* Open output */
     if (strcmp(lcFilNamOut,csStdInpOutNam) == 0 )
         lpFilOut = stdout ;
     else
@@ -604,68 +632,78 @@ int main(int aiArgCnt, char *acArg[])
         exit(EXI_OUT);
     }
 
-    /* Init output */
-    JOut *lpOut ;
-    switch (liOutTyp) {
-    case 0:
-        lpOut = new JOutBin(lpFilOut);
-        break;
-    case 1:
-        lpOut = new JOutAsc(lpFilOut);
-        break;
-    case 2:
-    default:  // XXX get rid of uninitialized warning
-        lpOut = new JOutRgn(lpFilOut);
-        break;
-    }
+    /* Execute required function */
+    int liRet ; /**< return code */
+    if (liFun % 2 == 0) {
+        /* Init output */
+        JOut *lpOut ;
+        switch (liOutTyp) {
+        case 0:
+            lpOut = new JOutBin(lpFilOut);
+            break;
+        case 1:
+            lpOut = new JOutAsc(lpFilOut);
+            break;
+        case 2:
+        default:  // XXX get rid of uninitialized warning
+            lpOut = new JOutRgn(lpFilOut);
+            break;
+        }
 
-    /* Initialize JDiff object */
-    JDiff loJDiff(lpFilOrg, lpFilNew, lpOut,
-                  liHshMbt, liVerbse,
-                  lbSrcBkt, liSrcScn, liMchMax, liMchMin, liAhdMax, lbCmpAll);
+        /* Initialize JDiff object */
+        JDiff loJDiff(lpFilOrg, lpFilNew, lpOut,
+                      liHshMbt, liVerbse,
+                      lbSrcBkt, liSrcScn, liMchMax, liMchMin, liAhdMax, lbCmpAll);
 
-    /* Show execution parameters */
-    if (liVerbse>1) {
-        fprintf(JDebug::stddbg, "\n");
-        fprintf(JDebug::stddbg, "Index table size (default: 64Mb) (-s): %dMb (%d samples)\n",
-                ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
-                loJDiff.getHsh()->get_hashprime()) ;
-        fprintf(JDebug::stddbg, "Search size     (0 = buffersize) (-a): %dkb\n",  liAhdMax / 1024 );
-        fprintf(JDebug::stddbg, "Buffer size        (default 2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
-        fprintf(JDebug::stddbg, "Block  size        (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
-        fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
-        fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
-        fprintf(JDebug::stddbg, "Compare out-of-buffer (-f to disable): %s\n",    lbCmpAll?"yes":"no");
-        fprintf(JDebug::stddbg, "Full indexing scan   (-ff to disbale): %s\n",   (liSrcScn>0)?"yes":"no");
-        fprintf(JDebug::stddbg, "Backtrace allowed     (-0 to disable): %s\n",    lbSrcBkt?"yes":"no");
-    }
+        /* Show execution parameters */
+        if (liVerbse>1) {
+            fprintf(JDebug::stddbg, "\n");
+            fprintf(JDebug::stddbg, "Index table size (default: 64Mb) (-s): %dMb (%d samples)\n",
+                    ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
+                    loJDiff.getHsh()->get_hashprime()) ;
+            fprintf(JDebug::stddbg, "Search size     (0 = buffersize) (-a): %dkb\n",  liAhdMax / 1024 );
+            fprintf(JDebug::stddbg, "Buffer size        (default 2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
+            fprintf(JDebug::stddbg, "Block  size        (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
+            fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
+            fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
+            fprintf(JDebug::stddbg, "Compare out-of-buffer (-f to disable): %s\n",    lbCmpAll?"yes":"no");
+            fprintf(JDebug::stddbg, "Full indexing scan   (-ff to disbale): %s\n",   (liSrcScn>0)?"yes":"no");
+            fprintf(JDebug::stddbg, "Backtrace allowed     (-0 to disable): %s\n",    lbSrcBkt?"yes":"no");
+        }
 
-    /* Execute... */
-    int liRet = loJDiff.jdiff();
+        /* Execute... */
+        liRet = loJDiff.jdiff();
 
-    /* Write statistics */
-    if (liVerbse > 1) {
-        fprintf(JDebug::stddbg, "\n");
-        fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
-        fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   JMatchTable::siHshRpr) ;
-        fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
-        fprintf(JDebug::stddbg, "Search      errors      = %d\n",   loJDiff.getHshErr()) ;
-        fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
-        fprintf(JDebug::stddbg, "Source      seeks       = %ld\n",  lpFilOrg->seekcount());
-        fprintf(JDebug::stddbg, "Destination seeks       = %ld\n",  lpFilNew->seekcount());
-        fprintf(JDebug::stddbg, "Delete      bytes       = %" PRIzd "\n", lpOut->gzOutBytDel);
-        fprintf(JDebug::stddbg, "Backtrack   bytes       = %" PRIzd "\n", lpOut->gzOutBytBkt);
-        fprintf(JDebug::stddbg, "Escape      bytes       = %" PRIzd "\n", lpOut->gzOutBytEsc);
-        fprintf(JDebug::stddbg, "Control     bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl);
-    }
-    if (liVerbse > 0) {
-        fprintf(JDebug::stddbg, "\n");
-        fprintf(JDebug::stddbg, "Equal       bytes       = %" PRIzd "\n", lpOut->gzOutBytEql);
-        fprintf(JDebug::stddbg, "Data        bytes       = %" PRIzd "\n", lpOut->gzOutBytDta);
-        fprintf(JDebug::stddbg, "Control-Esc bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
-        fprintf(JDebug::stddbg, "Total       bytes       = %" PRIzd "\n",
-                lpOut->gzOutBytCtl + lpOut->gzOutBytEsc + lpOut->gzOutBytDta);
-    }
+        /* Write statistics */
+        if (liVerbse > 1) {
+            fprintf(JDebug::stddbg, "\n");
+            fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
+            fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   JMatchTable::siHshRpr) ;
+            fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
+            fprintf(JDebug::stddbg, "Search      errors      = %d\n",   loJDiff.getHshErr()) ;
+            fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
+            fprintf(JDebug::stddbg, "Source      seeks       = %ld\n",  lpFilOrg->seekcount());
+            fprintf(JDebug::stddbg, "Destination seeks       = %ld\n",  lpFilNew->seekcount());
+            fprintf(JDebug::stddbg, "Delete      bytes       = %" PRIzd "\n", lpOut->gzOutBytDel);
+            fprintf(JDebug::stddbg, "Backtrack   bytes       = %" PRIzd "\n", lpOut->gzOutBytBkt);
+            fprintf(JDebug::stddbg, "Escape      bytes       = %" PRIzd "\n", lpOut->gzOutBytEsc);
+            fprintf(JDebug::stddbg, "Control     bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl);
+        }
+        if (liVerbse > 0) {
+            fprintf(JDebug::stddbg, "\n");
+            fprintf(JDebug::stddbg, "Equal       bytes       = %" PRIzd "\n", lpOut->gzOutBytEql);
+            fprintf(JDebug::stddbg, "Data        bytes       = %" PRIzd "\n", lpOut->gzOutBytDta);
+            fprintf(JDebug::stddbg, "Control-Esc bytes       = %" PRIzd "\n", lpOut->gzOutBytCtl + lpOut->gzOutBytEsc);
+            fprintf(JDebug::stddbg, "Total       bytes       = %" PRIzd "\n",
+                    lpOut->gzOutBytCtl + lpOut->gzOutBytEsc + lpOut->gzOutBytDta);
+        }
+    } /* liFun == 0 or 2 */
+    if (liFun == 1) {
+        JFileOut loFilOut(lpFilOut) ;
+
+        JPatcht loJPatcht(*lpFilOrg, *lpFilNew, loFilOut, liVerbse) ;
+        liRet = loJPatcht.jpatch();
+    } /* liFun == 1 or 2 */
 
     /* Cleanup */
     delete lpFilOrg;
@@ -673,13 +711,11 @@ int main(int aiArgCnt, char *acArg[])
 
     #ifndef JDIFF_STDIO_ONLY
     if (! lbStdio) {
-        if (liFilOrg != NULL) {
-            liFilOrg->close();
-            delete liFilOrg ;
+        if (liFilOrg.is_open()) {
+            liFilOrg.close();
         }
-        if (liFilNew != NULL) {
-            liFilNew->close();
-            delete liFilNew ;
+        if (liFilNew.is_open()) {
+            liFilNew.close();
         }
     }
     #endif // JDIFF_STDIO_ONLY
@@ -690,27 +726,33 @@ int main(int aiArgCnt, char *acArg[])
     /* Exit */
     switch (liRet) {
     case - EXI_SEK:
-        fprintf(JDebug::stddbg, "Seek error !");
+        fprintf(JDebug::stddbg, "\nSeek error !\n");
         exit (EXI_SEK);
     case - EXI_LRG:
-        fprintf(JDebug::stddbg, "64-bit offsets not supported !");
+        fprintf(JDebug::stddbg, "\n64-bit offsets not supported !\n");
         exit (EXI_LRG);
     case - EXI_RED:
-        fprintf(JDebug::stddbg, "Error reading file !");
+        fprintf(JDebug::stddbg, "\nError reading file !\n");
         exit (EXI_RED);
     case - EXI_WRI:
-        fprintf(JDebug::stddbg, "Error writing file !");
+        fprintf(JDebug::stddbg, "\nError writing file !\n");
         exit (EXI_WRI);
     case - EXI_MEM:
-        fprintf(JDebug::stddbg, "Error allocating memory !");
+        fprintf(JDebug::stddbg, "\nError allocating memory !\n");
         exit (EXI_MEM);
     case - EXI_ERR:
-        fprintf(JDebug::stddbg, "Other error occured !");
+        fprintf(JDebug::stddbg, "\nOther error occured !\n");
+        exit (EXI_ERR);
+    case EXI_EQL:
+        if (liVerbse > 1)
+            fprintf(JDebug::stddbg, "\nNo differences detected.\n");
+        exit(EXI_EQL) ;
+    case EXI_DIF:
+        if (liVerbse > 1)
+            fprintf(JDebug::stddbg, "\nFile are different.\n");
+        exit(EXI_DIF) ;
+    default:
+        fprintf(JDebug::stddbg, "\nUnknown exit code %d\n", liRet);
         exit (EXI_ERR);
     }
-
-    if (lpOut->gzOutBytDta == 0 && lpOut->gzOutBytDel == 0)
-        return(1);    /* no differences found */
-    else
-        return(0);    /* differences found    */
 }

@@ -4,7 +4,7 @@
 
 .DEFAULT: default
 
-OBJS=JDebug.o JDiff.o JDefs.o JFileAhead.o JFileIStream.o JFileIStreamAhead.o JHashPos.o \
+OBJS=JDebug.o JDiff.o JPatcht.o JDefs.o JFileOut.o JFileAhead.o JFileIStream.o JFileIStreamAhead.o JHashPos.o \
      JMatchTable.o JOutAsc.o JOutBin.o JOutRgn.o main.o 
 
 default:	linux

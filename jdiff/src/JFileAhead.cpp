@@ -1,7 +1,7 @@
 /*
  * JFileAhead.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -31,10 +31,11 @@ namespace JojoDiff {
 /**
  * Construct a buffered JFile on an istream.
  */
-JFileAhead::JFileAhead(FILE * apFil, const char *asFid, const long alBufSze, const int aiBlkSze ) :
-        mpFile(apFil), mlBufSze(alBufSze), miBlkSze(aiBlkSze), mlFabSek(0)
+JFileAhead::JFileAhead(FILE * const apFil, char const * const asFid,
+                       const long alBufSze, const int aiBlkSze )
+: mpFile(apFil), msFid(asFid), mlBufSze(alBufSze), miBlkSze(aiBlkSze), mlFabSek(0)
 {
-    mpBuf = (uchar *) malloc(mlBufSze) ;
+    mpBuf = (jchar *) malloc(mlBufSze) ;
 
     mpMax = mpBuf + mlBufSze ;
     mpInp = mpBuf;
@@ -45,7 +46,6 @@ JFileAhead::JFileAhead(FILE * apFil, const char *asFid, const long alBufSze, con
     mzPosEof = MAX_OFF_T ;
     mzPosRed = 0 ;
     miRedSze = 0 ;
-    msFid = asFid ;
 
     // Block size cannot be larger than buffer size
     if (miBlkSze > mlBufSze)
@@ -65,7 +65,9 @@ JFileAhead::~JFileAhead() {
 /**
  * Return number of seeks performed.
  */
-long JFileAhead::seekcount(){return mlFabSek; }
+long JFileAhead::seekcount() const {
+    return mlFabSek;
+}
 
 /**
  * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -85,9 +87,23 @@ void JFileAhead::set_lookahead_base (
  *
  * @return  -1=no buffering, > 0 : first position in buffer
  */
- off_t JFileAhead::getBufPos() {
+off_t JFileAhead::getBufPos() const {
     return mzPosInp - miBufUsd ;
 };
+
+/**
+ * @brief Get next byte
+ *
+ * Soft read ahead will return an EOB when date is not available in the buffer.
+ *
+ * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+ * @return 			the read character or EOF or EOB.
+ */
+int JFileAhead::get (
+    const int aiSft   /* 0=read, 1=hard ahead, 2=soft ahead  */
+) {
+    return get(mzPosRed, aiSft);
+}
 
 /**
  * Gets one byte from the lookahead file.
@@ -130,7 +146,7 @@ int JFileAhead::get_frombuffer (
     const off_t &azPos,    /* position to read from                */
     const int aiSft        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
-	uchar *lpDta ;
+	jchar *lpDta ;
 
 	/* Get data from buffer? */
 	if (azPos < mzPosInp) {
@@ -186,10 +202,10 @@ int JFileAhead::get_outofbuffer (
     const off_t &azPos,    /* position to read from                */
     const int aiSft        /* 0=read, 1=hard ahead, 2=soft ahead   */
 ){
-	bool liSek=0 ;	    /* reposition on file ? 0=no, 1=yes, 2=scroll back */
+	int liSek=0 ;	    /* reposition on file ? 0=no, 1=yes, 2=scroll back */
     int liTdo ;         /* number of bytes to read */
     int liDne ;         /* number of bytes read */
-    uchar *lpInp ;      /* place in buffer to read to */
+    jchar *lpInp ;      /* place in buffer to read to */
     off_t lzPos ;       /* position to seek */
 
     /* Check what should be done and set liSek accordingly */

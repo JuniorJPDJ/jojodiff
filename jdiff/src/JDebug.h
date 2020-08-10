@@ -3,7 +3,7 @@
  *
  * Debugging routines and definitions, typically empty when compiling without the -Ddebug option.
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *

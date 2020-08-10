@@ -1,7 +1,7 @@
 /*
  * JOutRgn.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -50,14 +50,14 @@ bool JOutRgn::put (
       case (MOD) :
         // a MOD sequence is only needed after an INS sequence
         if ( siOprCur == INS ) {
-            gzOutBytCtl+=2+ufPutLen(szOprCnt);
-            gzOutBytDta+=szOprCnt ;
+            gzOutBytCtl+=2 ; //@+ufPutLen(szOprCnt);
         }
+        gzOutBytDta+=szOprCnt ;
         fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - szOprCnt - azLen, szOprCnt) ;
         break;
 
       case (INS) :
-        gzOutBytCtl+=2+ufPutLen(szOprCnt);
+        gzOutBytCtl+=2 ; //@+ufPutLen(szOprCnt);
         gzOutBytDta+=szOprCnt ;
         fprintf(mpFilOut, P8zd " " P8zd " INS %" PRIzd "\n", azPosOrg, azPosNew - szOprCnt, szOprCnt) ;
         break;

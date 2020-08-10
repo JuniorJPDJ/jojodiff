@@ -3,7 +3,7 @@
  *
  * JojoDiff global definitions
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -30,7 +30,7 @@
 
 #include <stdio.h>
 
-#define JDIFF_VERSION   "0.8.3 (beta) 2020"
+#define JDIFF_VERSION   "0.8.4 (beta) 2020"
 #define JDIFF_COPYRIGHT "Copyright (C) 2002-2020 Joris Heirbaut"
 
 #define XSTR(x) STR(x)
@@ -71,9 +71,6 @@
 // unless -D_GNU_SOURCE has been specified
 #ifndef _GNU_SOURCE
 #ifdef __MINGW32__ // #if __MINGW_PRINTF_FORMAT == ms_printf doen't work
-    // use stdio files instead of iostreams
-    #define JDIFF_STDIO_ONLY
-
     // set coorect PRIzd
     #undef PRIzd
     #if _FILE_OFFSET_BITS == 64
@@ -83,6 +80,17 @@
     #endif // _FILE_OFFSET_BITS
 #endif // __MINGW_PRINTF_FORMAT
 #endif // _GNU_SOURCE
+
+// One person had issues with MINGW32 and istreams/malloc.
+// We're adding some definitions to suit everyone's needs.
+// I guess than more recent versions of MINGW may not have these issues.
+#define JDIFF_THROW_BAD_ALLOC
+#ifndef __MINGW64__
+#ifdef  __MINGW32__
+    #define JDIFF_STDIO_ONLY        // don't use istreams
+    #undef  JDIFF_THROW_BAD_ALLOC   // throw bad_alloc if alloc fails
+#endif // __MINGW32__
+#endif // __MINGW64__
 
 #ifdef JDIFF_LARGEFILE
 #if debug
@@ -97,7 +105,8 @@
 /*
  * Global definitions
  */
-#define uchar unsigned char
+#define uchar unsigned char             // always unsigned char
+#define jchar unsigned char             // depending on architecture, may change to byte, char, int, ....
 #define null  NULL
 
 #ifdef _LARGESAMPLE
@@ -111,8 +120,9 @@ const int SMPSZE = (int) sizeof(hkey) * 8 ;                                     
 const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1))) ;  /**< Largest positive offset     */
 
 #define EOB (EOF - 1)                   /**< End-Of-Buffer constant              */
-#define EXI_DIF  0                      /**< OK Exit code, differences found     */
-#define EXI_EQL  1                      /**< OK Exit code, no differences found  */
+#define EXI_OK   0                      /**< OK Exit code                        */
+#define EXI_EQL  0                      /**< OK Exit code, no differences found  */
+#define EXI_DIF  1                      /**< OK Exit code, differences found     */
 #define EXI_ARG  2                      /**< Error: not enough arguments         */
 #define EXI_FRT  3                      /**< Error opening first file            */
 #define EXI_SCD  4                      /**< Error opening second file           */

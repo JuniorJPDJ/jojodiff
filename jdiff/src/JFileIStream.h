@@ -1,7 +1,7 @@
 /*
  * JFileIStream.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -38,7 +38,7 @@ public:
     /**
      * Construct an unbuffered JFile on an istream.
      */
-	JFileIStream(istream * apFil, const char *asFid);
+	JFileIStream(istream &apFil, char const * const asFid);
 
 	/**
 	 * Destroy the JFile.
@@ -53,10 +53,17 @@ public:
 		    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
 		);
 
-    /**
-     * Return number of seek operations performed.
-     */
-    long seekcount();
+	/**
+	 * @brief Get next byte
+	 *
+	 * Soft read ahead will return an EOB when date is not available in the buffer.
+	 *
+	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+	 * @return 			the read character or EOF or EOB.
+	 */
+	virtual int get (
+	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	) ;
 
 	/**
 	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -69,25 +76,30 @@ public:
 	    const off_t azBse	/* new base position for soft lookahead */
 	) ;
 
+    /**
+     * Return number of seek operations performed.
+     */
+    long seekcount() const ;
+
      /**
-     * For buffered files, return the position of the buffer
+     * For buffered files, return the current position of the buffer
      * JFileIStream does not buffer so returns -1
      *
      * @return  -1=no buffering, > 0 : first position in buffer
      */
-	off_t getBufPos();
+	off_t getBufPos() const ;
 
 
 private:
 	/* Context */
-    istream *mpStream;      /* file handle                                  */
-    const char *msFid;      /* file id (for debugging)                      */
+    istream    &mpStream;       /**< file handle                            */
+    char const * const &msFid;  /**< file id (for debugging)                */
 
     /* State */
-    off_t mzPosInp;         /* current position in file                     */
+    off_t mzPosInp;         /**< current position in file                   */
 
     /* Statistics */
-    long mlFabSek ;      /* Number of times an fseek operation was performed  */
+    long mlFabSek ;         /**< Number of times an fseek was performed     */
 };
 }
 #endif /* JFILEISTREAM_H_ */

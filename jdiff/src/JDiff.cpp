@@ -3,7 +3,7 @@
  *
  * Jojo's diff on binary files: main class.
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -118,6 +118,7 @@ JDiff::JDiff(
 {
 	gpHsh = new JHashPos(aiHshSze) ;
 	gpMch = new JMatchTable(gpHsh, mpFilOrg, mpFilNew, aiMchMax, abCmpAll);
+	miValOrg = 0 ; //@ to remove !
 }
 
 /*
@@ -358,7 +359,7 @@ int JDiff::ufFndAhd (
     /* Set Lap for progress counter */
     if (miVerbse > 1) lzLap = azRedNew + PGSMRK ;
 
-    /* Start with hard lookahead unless the minimum number of matches to find is 0 */
+    /* Switch to soft reading when the minimum number of matches is obtained */
     liSftOrg = ((miMchMin == 0) ? 2 : 1) ;
     liSftNew = ((miMchMin == 0) ? 2 : 1) ;
 
@@ -390,6 +391,8 @@ int JDiff::ufFndAhd (
         if (mzAhdOrg==0){
             // scan the part of the source file available within the buffer
             mzAhdOrg = mpFilOrg->getBufPos() - 1; // -1 for ++mzAhdOrg
+            if (mzAhdOrg < -1 )
+                mzAhdOrg = -1 ; // for non-buffering sources
 
             // initialize the hash function
             mlHshOrg = 0 ;
@@ -496,7 +499,7 @@ int JDiff::ufFndAhd (
         // Set lookahead base position
         mpFilNew->set_lookahead_base(azRedNew);
 
-        // Start with soft or hard reading */
+        // Switch to soft reading if the minimum number of matches is obtained
         if (liFnd >= miMchMin){
             liSftOrg = 1 ; //@ 083s
             liSftNew = 2 ; //@ 083s

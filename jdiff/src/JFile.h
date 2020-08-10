@@ -1,7 +1,7 @@
 /*
  * JFile.h
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -21,15 +21,22 @@
 
 #ifndef JFILE_H_
 #define JFILE_H_
-#include <stdio.h>
+#include <cstdio>
+
+#include "JDefs.h"
 
 namespace JojoDiff {
 
-/* JDiff perform "addressed" file accesses when reading,
- * hence this abstract wrapper class to translate between streamed and addressed access.
+/**
+ * @brief JojoDiff's input file abstraction with absolute adressing.
  *
- * This abstraction also allows anyone to easily apply JDiff to his own data structures, by providing
- * a JFile descendant to JDiff.
+ * JDiff performs "addressed" file accesses when reading, to simplify certain parts of the algorithm.
+ * Hence this abstract wrapper class to translate between streamed and addressed access.
+ * For performance, certain parts of the algorithm switch back to streamed buffered access,
+ * so there's a little bit of both in JFile.
+ *
+ * This abstraction also allows anyone to easily apply JDiff to his own data structures,
+ * by providing a JFile descendant to JDiff.
  */
 class JFile {
 public:
@@ -41,12 +48,24 @@ public:
 	 * Soft read ahead will return an EOB when date is not available in the buffer.
 	 *
 	 * @param   azPos	position to read, incremented on read (not for EOF or EOB)
-	 * @param   aiTyp	0=read, 1=hard read ahead, 2=soft read ahead
+	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
 	 * @return 			the read character or EOF or EOB.
 	 */
 	virtual int get (
 	    const off_t &azPos,	/* position to read from                */
-	    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+	    const int aiSft=0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	) = 0 ;
+
+	/**
+	 * @brief Get next byte
+	 *
+	 * Soft read ahead will return an EOB when date is not available in the buffer.
+	 *
+	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+	 * @return 			the read character or EOF or EOB.
+	 */
+	virtual int get (
+	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
 	) = 0 ;
 
 	/**
@@ -63,14 +82,28 @@ public:
 	/**
 	 * @brief Return number of seek operations performed.
 	 */
-	virtual long seekcount() = 0;
+	virtual long seekcount() const = 0;
 
 	/**
 	 * @brief For buffered files, return the position of the buffer
 	 *
 	 * @return  -1=no buffering, > 0 : first position in buffer
 	 */
-	 virtual off_t getBufPos() = 0;
+	virtual off_t getBufPos() { return -1 ; }
+
+	 /**
+	 * @brief Get access to (fast) buffered read.
+	 *
+	 * @param   azPos   in:  position to get access to
+	 * @param   azLen   out: number of bytes in buffer
+	 * @param   aiSft   in:  0=read, 1=hard read ahead, 2=soft read ahead
+	 *
+	 * @return  buffer, null = azPos not in buffer or no buffer
+	 */
+	virtual jchar *getbuf(off_t azPos, off_t &azLen, int aiSft = 0) {
+	     return null ;
+    }
+
 };
 } /* namespace */
 #endif /* JFILE_H_ */

@@ -3,7 +3,7 @@
  *
  * Jojo's diff on binary files: main class.
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *

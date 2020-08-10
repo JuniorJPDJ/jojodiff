@@ -1,7 +1,7 @@
 /*
  * JFileIStream.cpp
  *
- * Copyright (C) 2002-2011 Joris Heirbaut
+ * Copyright (C) 2002-2020 Joris Heirbaut
  *
  * This file is part of JojoDiff.
  *
@@ -26,7 +26,7 @@
 #include "JDebug.h"
 
 namespace JojoDiff {
-JFileIStream::JFileIStream(istream * apFil, const char *asFid) :
+JFileIStream::JFileIStream(istream &apFil, char const * const asFid) :
     mpStream(apFil), msFid(asFid), mzPosInp(0), mlFabSek(0)
 {
 }
@@ -37,14 +37,14 @@ JFileIStream::~JFileIStream() {
 /**
  * Return number of seeks performed.
  */
-long JFileIStream::seekcount(){return mlFabSek; }
+long JFileIStream::seekcount() const {return mlFabSek; }
 
 /**
  * For buffered files, return the position of the buffer
  * JFileIStream does not buffer, so return -1
  * @return  -1=no buffering, > 0 : first position in buffer
  */
-off_t JFileIStream::getBufPos() {
+off_t JFileIStream::getBufPos() const {
     return -1;
 };
 
@@ -62,6 +62,20 @@ void JFileIStream::set_lookahead_base (
 }
 
 /**
+ * @brief Get next byte
+ *
+ * Soft read ahead will return an EOB when date is not available in the buffer.
+ *
+ * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+ * @return 			the read character or EOF or EOB.
+ */
+int JFileIStream::get (
+    const int aiSft   /* 0=read, 1=hard ahead, 2=soft ahead  */
+) {
+    return get(mzPosInp, aiSft);
+}
+
+/**
  * Gets one byte from the lookahead file.
  */
 int JFileIStream:: get (
@@ -70,12 +84,12 @@ int JFileIStream:: get (
 ) {
     if (azPos != mzPosInp){
         mlFabSek++;
-        if (mpStream->eof())
-            mpStream->clear();
-        mpStream->seekg(azPos, std::ios::beg); // may throw an exception
+        if (mpStream.eof())
+            mpStream.clear();
+        mpStream.seekg(azPos, std::ios::beg); // may throw an exception
     }
     mzPosInp = azPos + 1;
-    return mpStream->get();
+    return mpStream.get();
 } /* function get */
 } /* namespace JojoDiff */
 
