@@ -38,7 +38,7 @@ public:
     /**
      * Construct an unbuffered JFile on an istream.
      */
-	JFileIStream(istream &apFil, char const * const asFid);
+	JFileIStream(istream &apFil, char const * const asFid, const bool abSeq = false);
 
 	/**
 	 * Destroy the JFile.
@@ -49,8 +49,8 @@ public:
 	 * Get one byte from the file from the given position.
 	 */
 	int get (
-		    const off_t &azPos,	/* position to read from                */
-		    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+		    const off_t &azPos,	        /* position to read from                */
+		    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
 		);
 
 	/**
@@ -62,7 +62,7 @@ public:
 	 * @return 			the read character or EOF or EOB.
 	 */
 	virtual int get (
-	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
 	) ;
 
 	/**
@@ -76,30 +76,22 @@ public:
 	    const off_t azBse	/* new base position for soft lookahead */
 	) ;
 
+protected:
+
     /**
-     * Return number of seek operations performed.
-     */
-    long seekcount() const ;
-
-     /**
-     * For buffered files, return the current position of the buffer
-     * JFileIStream does not buffer so returns -1
-     *
-     * @return  -1=no buffering, > 0 : first position in buffer
-     */
-	off_t getBufPos() const ;
-
+    * @brief Seek EOF
+    *
+    * @return >= 0: EOF position, EXI_SEK in case of error
+    */
+    off_t jeofpos() ;
 
 private:
 	/* Context */
-    istream    &mpStream;       /**< file handle                            */
-    char const * const &msFid;  /**< file id (for debugging)                */
+    istream    &mpFil;      /**< file handle                            */
 
     /* State */
     off_t mzPosInp;         /**< current position in file                   */
 
-    /* Statistics */
-    long mlFabSek ;         /**< Number of times an fseek was performed     */
 };
 }
 #endif /* JFILEISTREAM_H_ */

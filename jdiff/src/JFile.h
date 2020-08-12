@@ -43,6 +43,23 @@ public:
 	virtual ~JFile(){};
 
 	/**
+	* Constructor
+	* @param    asJid   JFile-id: Org for source file, New for destination file
+	* @param    abSeq   Sequential file (default = no) ?
+	*/
+	JFile(char const * const asJid, const bool abSeq = false );
+
+	/**
+	* Reading type:
+	* - Read = normal read
+	* - HardAhead = ahead reading, extend the buffer if needed
+	* - SoftAhead = buffered ahead reading, return EOB (EndOfBuffer) if data is not available
+	* - Test      = read for testing purposes, use data from buffer when possible but never
+	*               change the buffer (to avoid interference)
+	*/
+    enum eAhead { Read, HardAhead, SoftAhead, Test } ;
+
+	/**
 	 * @brief Get byte at specified address and increment the address to the next byte.
 	 *
 	 * Soft read ahead will return an EOB when date is not available in the buffer.
@@ -53,7 +70,7 @@ public:
 	 */
 	virtual int get (
 	    const off_t &azPos,	/* position to read from                */
-	    const int aiSft=0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
 	) = 0 ;
 
 	/**
@@ -65,7 +82,7 @@ public:
 	 * @return 			the read character or EOF or EOB.
 	 */
 	virtual int get (
-	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
 	) = 0 ;
 
 	/**
@@ -80,9 +97,14 @@ public:
 	) = 0 ;
 
 	/**
+	* @brief Return if this file is a sequential file.
+	*/
+	bool isSequential() { return mbSeq ; }
+
+	/**
 	 * @brief Return number of seek operations performed.
 	 */
-	virtual long seekcount() const = 0;
+	virtual long seekcount() { return mlFabSek ; }
 
 	/**
 	 * @brief For buffered files, return the position of the buffer
@@ -100,9 +122,31 @@ public:
 	 *
 	 * @return  buffer, null = azPos not in buffer or no buffer
 	 */
-	virtual jchar *getbuf(off_t azPos, off_t &azLen, int aiSft = 0) {
+	virtual jchar *getbuf(const off_t azPos, off_t &azLen, const eAhead aiSft = Read ) {
 	     return null ;
     }
+
+protected:
+
+    /**
+    * @brief Check if file is sequential or not by looking for EOF
+    *
+    */
+    void chkSeq() ;
+
+    /**
+    * @brief Seek EOF abstraction, for override by subclasses
+    *
+    * @return >= 0: EOF position, EXI_SEK in case of error
+    */
+    virtual off_t jeofpos() = 0; //@ { return EXI_SEK ; } ;
+
+protected:
+    char const * const msJid ;      /**< JFile-id           */
+    bool mbSeq ;                    /**< Sequential file    */
+    off_t mzPosEof ;                /**< EOF-position       */
+
+    long mlFabSek = 0 ;      /**< Number of times an fseek operation was performed  */
 
 };
 } /* namespace */

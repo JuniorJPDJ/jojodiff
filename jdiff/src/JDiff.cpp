@@ -169,12 +169,12 @@ int JDiff::jdiff()
     }
 
     /* Take one byte from each file ... */
-    lcOrg = mpFilOrg->get(lzPosOrg, 0);
-    lcNew = mpFilNew->get(lzPosNew, 0);
+    lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
+    lcNew = mpFilNew->get(lzPosNew, JFile::Read);
     while (lcNew >= 0) {
         #if debug
         if (JDebug::gbDbg[DBGPRG])
-            fprintf(JDebug::stddbg, "Input "P8zd"->%2x "P8zd"->%2x.\n",
+            fprintf(JDebug::stddbg, "Input " P8zd "->%2x " P8zd "->%2x.\n",
                     lzPosOrg - 1, lcOrg, lzPosNew - 1, lcNew)  ;
         #endif
 
@@ -188,8 +188,8 @@ int JDiff::jdiff()
             }
 
             /* Take next byte from each file ... */
-            lcOrg = mpFilOrg->get(++ lzPosOrg, 0) ;
-            lcNew = mpFilNew->get(++ lzPosNew, 0) ;
+            lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+            lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
 
             /* decrease ahead counter */
             lzAhd -- ;
@@ -208,13 +208,13 @@ int JDiff::jdiff()
                 mpOut->put(INS, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
 
                 /* Take next byte from each file ... */
-                lcNew = mpFilNew->get(++ lzPosNew, 0) ;
+                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
             } else {
                 mpOut->put(MOD, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
 
                 /* Take next byte from each file ... */
-                lcOrg = mpFilOrg->get(++ lzPosOrg, 0) ;
-                lcNew = mpFilNew->get(++ lzPosNew, 0) ;
+                lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
             }
 
             /* decrease ahead counter */
@@ -269,17 +269,17 @@ int JDiff::jdiff()
             if (lzSkpOrg > 0) {
               mpOut->put(DEL, lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
               lzPosOrg += lzSkpOrg ;
-              lcOrg = mpFilOrg->get(lzPosOrg, 0);
+              lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
             } else if (lzSkpOrg < 0) {
               mpOut->put(BKT, - lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
               lzPosOrg += lzSkpOrg ;
-              lcOrg = mpFilOrg->get(lzPosOrg, 0);
+              lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
             }
             if (lzSkpNew > 0) {
               while (lzSkpNew > 0 && lcNew > EOF) {
                 mpOut->put(INS, 1, 0, lcNew, lzPosOrg, lzPosNew);
                 lzSkpNew-- ;
-                lcNew = mpFilNew->get(++ lzPosNew, 0);
+                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read);
               }
             }
         } /* if lcOrg == lcNew */
@@ -303,7 +303,8 @@ int JDiff::jdiff()
     if (lcNew < EOB || lcOrg < EOB){
         return (lcNew < lcOrg)?lcNew:lcOrg;
     }
-    return 0;
+
+    return EXI_OK;
 } /* jdiff */
 
 /**
@@ -351,8 +352,8 @@ int JDiff::ufFndAhd (
     int liRlb;          /**< Reliability range for current hashtable        */
 
     int liFnd;          /**< Number of matches found                        */
-    int liSftOrg;       /**< 1 = hard look-ahead, 2 = soft look-ahead       */
-    int liSftNew;       /**< 1 = hard look-ahead, 2 = soft look-ahead       */
+    JFile::eAhead liSftOrg;   /**< 1 = hard look-ahead, 2 = soft look-ahead       */
+    JFile::eAhead liSftNew;   /**< 1 = hard look-ahead, 2 = soft look-ahead       */
 
     static bool lbFre=true;     /**< false = match table is full, cleanup needed   */
 
@@ -360,8 +361,7 @@ int JDiff::ufFndAhd (
     if (miVerbse > 1) lzLap = azRedNew + PGSMRK ;
 
     /* Switch to soft reading when the minimum number of matches is obtained */
-    liSftOrg = ((miMchMin == 0) ? 2 : 1) ;
-    liSftNew = ((miMchMin == 0) ? 2 : 1) ;
+    liSftNew = liSftOrg = ((miMchMin == 0) ? JFile::SoftAhead : JFile::HardAhead) ;
 
     /* Prescan the source file to build the hashtable */
     switch (miSrcScn) {
@@ -501,8 +501,8 @@ int JDiff::ufFndAhd (
 
         // Switch to soft reading if the minimum number of matches is obtained
         if (liFnd >= miMchMin){
-            liSftOrg = 1 ; //@ 083s
-            liSftNew = 2 ; //@ 083s
+            liSftOrg = mbCmpAll ? JFile::HardAhead : JFile::SoftAhead ;//@ 083s
+            liSftNew = JFile::SoftAhead ; //@ 083s
         }
 
         /*
@@ -634,8 +634,8 @@ int JDiff::ufFndAhd (
                         if (mzAhdNew > azRedNew) {    // do not count lookback matches
                             liFnd ++ ;
 
-                            if (liFnd >= miMchMin) liSftNew=2 ;   // switch to soft reading
-                            if (liFnd >= miMchMax) break;         // stop lookahead
+                            if (liFnd >= miMchMin) liSftNew=JFile::SoftAhead ;   // switch to soft reading
+                            if (liFnd >= miMchMax) break;                        // stop lookahead
                         }
                     } /* solution added */
                 } /* if usable */
@@ -734,7 +734,7 @@ int JDiff::ufFndAhdScn ()
 
     /* Read SMPSZE-1 bytes (31 or 63) to initialize the hash function */
     for (liIdx=0; (liIdx < SMPSZE - 1); liIdx++) {
-        lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+        lcValOrg = mpFilOrg->get(++ lzPosOrg, JFile::HardAhead);
         if (lcValOrg <= EOF)
             break ;
         lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;
@@ -744,7 +744,7 @@ int JDiff::ufFndAhdScn ()
     if (miVerbse > 1) {
         /* slow version with user feedback */
         while (lcValOrg > EOF) {
-            lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+            lcValOrg = mpFilOrg->get(++ lzPosOrg, JFile::HardAhead);
             if (lcValOrg <= EOF)
                 break ;
             lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;
@@ -752,7 +752,7 @@ int JDiff::ufFndAhdScn ()
 
             #if debug
                 if (JDebug::gbDbg[DBGAHH])
-                    fprintf(JDebug::stddbg, "ufHshAdd(%2x -> %8"PRIhkey", "P8zd", %8d)\n",
+                    fprintf(JDebug::stddbg, "ufHshAdd(%2x -> %8" PRIhkey ", " P8zd ", %8d)\n",
                             lcValOrg, lkHshOrg, lzPosOrg, 0);
             #endif
 
@@ -764,7 +764,7 @@ int JDiff::ufFndAhdScn ()
     } else {
         /* fast version, no user feedback nor debug */
         while (lcValOrg > EOF) {
-            lcValOrg = mpFilOrg->get(++ lzPosOrg, 1);
+            lcValOrg = mpFilOrg->get(++ lzPosOrg, JFile::HardAhead);
             if (lcValOrg <= EOF)
                 break ;
             lkHshOrg = gpHsh->hash(lkHshOrg, lcValPrv, lcValOrg, liEqlOrg) ;

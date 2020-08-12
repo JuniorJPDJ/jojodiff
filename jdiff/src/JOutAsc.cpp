@@ -44,8 +44,7 @@ bool JOutAsc::put (
 
   if (aiOpr == ESC) return false ;
 
-  fprintf(mpFilOut, P8zd" ", azPosOrg) ;
-  fprintf(mpFilOut, P8zd" ", azPosNew) ;
+  fprintf(mpFilOut, P8zd " " P8zd " ", azPosOrg, azPosNew) ;
 
   switch (aiOpr) {
     case (MOD) :

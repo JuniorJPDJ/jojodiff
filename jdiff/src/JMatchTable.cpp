@@ -189,7 +189,7 @@ int JMatchTable::add (
         }
 
         /* check */
-        int liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll?1:2) ;
+        int liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
         if (liCurCmp == 0){
             // check failed, don't add to the table
             if (azFndNewAdd >= azRedNew) siHshRpr++ ;
@@ -242,14 +242,14 @@ int JMatchTable::add (
 
         #if debug
         if (JDebug::gbDbg[DBGMCH])
-          fprintf(JDebug::stddbg, "Mch Add ("P8zd","P8zd")  Bse (%" PRIzd ")\n",
+          fprintf(JDebug::stddbg, "Mch Add (" P8zd "," P8zd ")  Bse (%" PRIzd ")\n",
                   azFndOrgAdd, azFndNewAdd, azRedNew) ;
         #endif
 
         return (mpMchFre != null || miMchFre > 0) ; // still place or not ?
     } else {
         #if debug
-        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch ("P8zd", "P8zd") Ful\n",
+        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch (" P8zd ", " P8zd ") Ful\n",
                   azFndOrgAdd, azFndNewAdd) ;
         #endif
 
@@ -442,7 +442,7 @@ bool JMatchTable::getbest (
             }
             if (liCurCmp == 0) {
                 /* compare */
-                liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll?1:2) ;
+                liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
 
                 /* store result for later */
                 if (liCurCmp>0){
@@ -601,7 +601,7 @@ bool JMatchTable::getbest (
         }
 
         fprintf(JDebug::stddbg, "Rlb official=%d, measured max=%d, avg=%d\n",
-            liRlb, liRlbMax, liRlbCnt>0?liRlbSum/liRlbCnt:-1);
+            mpHsh->get_reliability(), liRlbMax, liRlbCnt>0?liRlbSum/liRlbCnt:-1);
     }
     #endif
 
@@ -634,8 +634,8 @@ bool JMatchTable::getbest (
  * ---------------------------------------------------------------------------*/
 /**
  * Verify and optimize matches:
- * Searches at given positions for a run of 8 equal bytes.
- * Searching continues for the given length unless soft-reading is specified
+ * Searches at given positions for a run of minimum EQLMIN equal bytes.
+ * Searching continues for the full length unless soft-reading is specified
  * and the end-of-buffer is reached.
  *
  * @param   &rzPosOrg    in/out  position on first file
@@ -649,7 +649,7 @@ bool JMatchTable::getbest (
  * ---------------------------------------------------------------------------*/
 int JMatchTable::check (
     off_t &azPosOrg, off_t &azPosNew,
-    int aiLen, int aiSft
+    int aiLen, const JFile::eAhead aiSft
 ) const {
     int lcOrg=0 ;
     int lcNew=0 ;
@@ -660,7 +660,7 @@ int JMatchTable::check (
 
     #if debug
     if (JDebug::gbDbg[DBGCMP])
-        fprintf( JDebug::stddbg, "Fnd ("P8zd","P8zd",%4d,%d): ",
+        fprintf( JDebug::stddbg, "Fnd (" P8zd "," P8zd ",%4d,%d): ",
                  azPosOrg, azPosNew, aiLen, aiSft) ;
     #endif
 
@@ -671,7 +671,7 @@ int JMatchTable::check (
             azPosOrg--;
             break;
         }
-        else if ((lcNew = mpFilNew->get(azPosNew ++, 2)) < 0){
+        else if ((lcNew = mpFilNew->get(azPosNew ++, JFile::SoftAhead)) < 0){
             azPosNew--;
             azPosOrg--;
             break;
@@ -691,7 +691,7 @@ int JMatchTable::check (
 
     #if debug
         if (JDebug::gbDbg[DBGCMP])
-            fprintf( JDebug::stddbg, ""P8zd" "P8zd" %2d %s (%c)%02x == (%c)%02x\n",
+            fprintf( JDebug::stddbg, "" P8zd " " P8zd " %2d %s (%c)%02x == (%c)%02x\n",
                      azPosOrg - liEql, azPosNew - liEql, liEql,
                      (liEql>EQLMIN)?"OK!":(lcOrg==EOB || lcNew==EOB)?"EOB":"NOK",
                      (lcOrg>=32 && lcOrg <= 127)?lcOrg:' ',(uchar)lcOrg,

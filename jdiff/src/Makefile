@@ -4,20 +4,21 @@
 
 .DEFAULT: default
 
-OBJS=JDebug.o JDiff.o JPatcht.o JDefs.o JFileOut.o JFileAhead.o JFileIStream.o JFileIStreamAhead.o JHashPos.o \
-     JMatchTable.o JOutAsc.o JOutBin.o JOutRgn.o main.o 
+OBJS=JDebug.o JDiff.o JPatcht.o JDefs.o JHashPos.o JMatchTable.o JFileOut.o JFile.o JFileIStream.o \
+     JFileAhead.o JFileAheadIStream.o JFileAheadStdio.o JOutAsc.o JOutBin.o JOutRgn.o main.o 
 
 default:	linux
 all: 		linux 
 full:		clean linux
-linux:		jdiff jpatch
-debug:		jdifd jpatcd
+linux:		jdiff 
+debug:		jdifd 
 
 CC=gcc
 CPP=g++
 NATIVE=-march=native -m64
 CFLAGS=$(NATIVE) -O2 -Wall 
 
+linux:DBG=-s
 debug:DBG=-g -D_DEBUG
 
 %.o: %.cpp

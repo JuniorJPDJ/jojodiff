@@ -19,9 +19,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef JFILEAHEAD_H_
-#define JFILEAHEAD_H_
+#ifndef JFileAhead_H_
+#define JFileAhead_H_
 
+#include <istream>
 using namespace std;
 
 #include "JDefs.h"
@@ -35,9 +36,9 @@ namespace JojoDiff {
  */
 class JFileAhead: public JFile {
 public:
+    JFileAhead(char const * const asFid, const long alBufSze = 256*1024,
+               const int aiBlkSze = 8192, const bool abSeq = false);
     virtual ~JFileAhead();
-    JFileAhead(FILE * const apFil, char const * const asFid,
-               const long alBufSze = 256*1024, const int aiBlkSze = 4096 );
 
 	/**
 	 * @brief Get byte at specified address and increment the address to the next byte.
@@ -45,15 +46,15 @@ public:
 	 * Soft read ahead will return an EOB when date is not available in the buffer.
 	 *
 	 * @param   azPos	position to read, incremented on read (not for EOF or EOB)
-	 * @param   aiTyp	0=read, 1=hard read ahead, 2=soft read ahead
+	 * @param   aiSft	0=read, 1=hard read ahead, 2=soft read ahead
 	 * @return 			the read character or EOF or EOB.
 	 */
     int get(
         const off_t &azPos,   /* position to read from                */
-        const int aiTyp 	  /* 0=read, 1=hard ahead, 2=soft ahead   */
+        const eAhead aiSft    /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
- 	/**
+	/**
 	 * @brief Get next byte
 	 *
 	 * Soft read ahead will return an EOB when date is not available in the buffer.
@@ -62,83 +63,117 @@ public:
 	 * @return 			the read character or EOF or EOB.
 	 */
 	int get (
-	    const int aiSft = 0   /* 0=read, 1=hard ahead, 2=soft ahead   */
+	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
 	) ;
 
-    /**
-	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+	 /**
+	 * @brief Get access to (fast) buffered read.
 	 *
-	 * Attention: the base will be implicitly changed by get on non-buffered reads too !
+	 * @param   azPos   in:  position to get access to
+	 * @param   azLen   out: number of bytes in buffer
+	 * @param   aiSft   in:  0=read, 1=hard read ahead, 2=soft read ahead
 	 *
-	 * @param   azBse	base position
+	 * @return  buffer, null = azPos not in buffer or no buffer
 	 */
-	void set_lookahead_base (
-	    const off_t azBse	/* new base position for soft lookahead */
-	) ;
-
-	/**
-	 * @brief For buffered files, return the position of the buffer
-	 *
-	 * @return  -1=no buffering, > 0 : first position in buffer
-	 */
-	 off_t getBufPos() const ;
+	jchar *getbuf(const off_t azPos, off_t &azLen, const eAhead aiSft = Read) ;
 
     /**
      * Return number of seek operations performed.
      */
     long seekcount() const ;
 
+	/**
+	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
+	 *
+	 * Attention: the base will be implicitly changed by get on non-buffered reads too !
+	 *
+	 * @param   azBse	base position
+	 */
+	virtual void set_lookahead_base (
+	    const off_t azBse	/* new base position for soft lookahead */
+	) ;
+
+    /**
+	 * For buffered files, return the position of the buffer
+	 *
+	 * @return  -1=no buffering, > 0 : first position in buffer
+	 */
+	off_t getBufPos();
+
+protected:
+
+    /**
+    * @brief Seek abstraction, for override by subclasses
+    *
+    * @param   azPos    Position to seek to
+    * @return  EXI_OK for succes or EXI_SEK in case of error
+    */
+    virtual int jseek(const off_t azPos) = 0 ;
+
+    /**
+    * @brief Seek EOF abstraction, for override by subclasses
+    *
+    * @return >= 0: EOF position, EXI_SEK in case of error
+    */
+    virtual off_t jeofpos() = 0 ;
+
+    /**
+    * @brief Read abstraction, for override by subclasses
+    *
+    * @param >= 0: number of bytes read
+    */
+    virtual size_t jread(jchar * const ptr, const size_t count) = 0 ;
+
+
 private:
+    enum eBufOpr { Append, Reset, Scrollback } ;
+    enum eBufDne { Added, Cycled, Partial, EndOfFile = EOF, EndOfBuffer = EOB, SeekError = EXI_SEK } ;
+
     /**
      * @brief Get data from the buffer. Call get_fromfile such is not possible.
      *
      * @param azPos		position to read from
-     * @param aiTyp		0=read, 1=hard ahead, 2=soft ahead
+     * @param aiSft		0=read, 1=hard ahead, 2=soft ahead
      * @return data at requested position, EOF or EOB.
      */
     int get_frombuffer(
-        const off_t &azPos,   /* position to read from                */
-        const int aiTyp       /* 0=read, 1=hard ahead, 2=soft ahead   */
+        const off_t azPos,    /* position to read from                */
+        const eAhead aiSft    /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
     /**
      * @brief Get data from the underlying system file.
+     *
      * Retrieves requested position into the buffer, trying to keep the buffer as
      * large as possible (i.e. invalidating/overwriting as less as possible).
      * Calls get_frombuffer afterwards to get the data from the buffer.
      *
      * @param azPos		position to read from
      * @param aiSft		0=read, 1=hard ahead, 2=soft ahead
-     * @return data at requested position, EOF or EOB.
+     * @return 1 = data read
+     * @return 2 = buffer cycled
+     * @return 3 = unaligned/broken read
      */
-    int get_outofbuffer(
-        const off_t &azPos, /* position to read from                */
-        const int aiSft     /* 0=read, 1=hard ahead, 2=soft ahead   */
+    eBufDne get_fromfile(
+        const off_t azPos,  /* position to read from                */
+        const eAhead aiSft  /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
 private:
-    /* Context */
-    char const * const msFid;   /**< file id (for debugging)              */
-    FILE * const mpFile;        /**< file handle                          */
-
     /* Settings */
-    long mlBufSze;      /**< File lookahead buffer size                   */
-    int miBlkSze;       /**< Read file in blocks of 4096 bytes            */
+    const long mlBufSze;    /**< File lookahead buffer size                   */
+    int miBlkSze;           /**< Block size: read from file in blocks         */
 
     /* Buffer state */
-    long miRedSze;      /**< distance between izPosRed to izPosInp        */
+    long miRedSze;      /**< distance between izPosRed and izPosInp       */
     long miBufUsd;      /**< number of bytes used in buffer               */
     jchar *mpBuf;       /**< read-ahead buffer                            */
     jchar *mpMax;       /**< read-ahead buffer end                        */
     jchar *mpInp;       /**< current position in buffer                   */
-    jchar *mpRed;       /**< last position read from buffer			      */
+    jchar *mpRed;       /**< last position read from buffer				  */
     off_t mzPosInp;     /**< current position in file                     */
     off_t mzPosRed;     /**< last position read from buffer				  */
-    off_t mzPosEof;     /**< eof position 			                      */
     off_t mzPosBse;     /**< base position for soft reading               */
-
-    /* Statistics */
-    long mlFabSek ;     /**< Number of times an fseek operation was performed  */
 };
-}
-#endif /* JFILEAHEAD_H_ */
+}/* namespace */
+#endif /* JFileAhead_H_ */

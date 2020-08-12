@@ -79,7 +79,7 @@ off_t JPatcht::ufGetInt( JFile &apFil){
     return liVal ;
 #else
     fprintf(stderr, "64-bit length numbers not supported!\n");
-    exit(EXI_LRG);
+    return EXI_LRG;
 #endif
   }
 }
@@ -97,10 +97,10 @@ int JPatcht::ufPutDta( off_t const lzPosOrg, off_t const lzPosOut,
                        int liOpr, int const aiDta, off_t azOff )
 {
     mpFilOut.putc(aiDta) ;
-    if (miVerbse > 2) {
+    if (miVerbse > 1) {
         fprintf(JDebug::stddbg, P8zd " " P8zd " %s %3o %c\n",
-                  lzPosOrg-1 + ((liOpr == MOD) ? azOff : 0),
-                  lzPosOut-1,
+                  lzPosOrg + ((liOpr == MOD) ? azOff : 0),
+                  lzPosOut + azOff,
                   (liOpr == MOD) ? "MOD" : "INS",
                   aiDta,
                   ((aiDta >= 32 && aiDta <= 127)?(char) aiDta:' '))  ;
@@ -178,7 +178,7 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
                 // <ESC> INS within an <ESC> INS is meaningless: handle as data
                 lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, ESC, lzMod) ;
                 if (miVerbse > 1) {
-                    fprintf(JDebug::stddbg, P8zd" " P8zd " MOD %3o ESC\n",
+                    fprintf(JDebug::stddbg, P8zd " " P8zd " MOD %3o ESC\n",
                             lzPosOrg+lzMod-1, lzPosOut-1, ESC)  ;
                 }
                 liInp=liNew ;   // will be output below
@@ -205,132 +205,138 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
 *   <chr>  = any byte different from <ESC><MOD><INS><DEL> or <EQL>
 *   <ESC><ESC> yields one <ESC> byte
 *******************************************************************************/
-    int JPatcht::jpatch ()
-    {
-        int liInp ;         /* Current input from patch file          */
-        int liDbl = EOF ;   /* Pending byte (EOF = no pending bye)    */
-        int liOpr ;         /* Current operand                        */
-        int liRet;          /* Return code from output file           */
+int JPatcht::jpatch ()
+{
+    int liInp ;         /* Current input from patch file          */
+    int liDbl = EOF ;   /* Pending byte (EOF = no pending bye)    */
+    int liOpr ;         /* Current operand                        */
+    int liRet;          /* Return code from output file           */
 
-        off_t lzOff ;       /* Current operand's offset               */
-        off_t lzPosOrg=0;   /* Position in source file                */
-        off_t lzPosOut=0;   /* Position in destination file           */
+    off_t lzOff ;       /* Current operand's offset               */
+    off_t lzPosOrg=0;   /* Position in source file                */
+    off_t lzPosOut=0;   /* Position in destination file           */
 
-        liOpr = 0 ;   // no operator
-        while (liOpr != EOF) {
-            // Read operand from input
-            if (liOpr == 0) {
-                liInp = mpFilPch.get();
-                if (liInp == EOF)
+    liOpr = 0 ;   // no operator
+    while (liOpr != EOF) {
+        // Read operand from input
+        if (liOpr == 0) {
+            liInp = mpFilPch.get();
+            if (liInp == EOF)
+                break ;
+
+            // Handle ESC <opr>
+            if (liInp == ESC) {
+                liDbl = mpFilPch.get();
+                switch (liDbl) {
+                case EQL:
+                case DEL:
+                case BKT:
+                case MOD:
+                case INS:
+                    liOpr=liDbl;
+                    liDbl=EOF;
+                    liInp=EOF;
+                    break ; // new operator found, all ok !
+                case EOF:
+                    // serious error, let's call this a trailing byte
+                    fprintf(stderr, "Warning: unexpected trailing byte at end of file, patch file may be corrupted.\n") ;
+                    return (EXI_ERR);
                     break ;
-
-                // Handle ESC <opr>
-                if (liInp == ESC) {
-                    liDbl = mpFilPch.get();
-                    switch (liDbl) {
-                    case EQL:
-                    case DEL:
-                    case BKT:
-                    case MOD:
-                    case INS:
-                        liOpr=liDbl;
-                        liDbl=EOF;
-                        liInp=EOF;
-                        break ; // new operator found, all ok !
-                    case EOF:
-                        // serious error, let's call this a trailing byte
-                        fprintf(stderr, "Warning: unexpected trailing byte at end of file, patch file may be corrupted.\n") ;
-                        return (EXI_ERR);
-                        break ;
-                    default:
-                        // hmmm, an ESC xxx or ESC ESC : this is awkward!
-                        // try to resolve by having two pending bytes: liInp and liDbl
-                        if (liOpr > 0) liOpr=0;
-                        break ;
-                    }
-                } else {
-                    liOpr = 0;    // it's not an operator sequence (gaining two bytes)
-                }
-
-                // If an ESC <opr> is missing, set default operator based on previous operator
-                if (liOpr == 0 || liInp != EOF) {
-                    liOpr=MOD ; // the default operator
+                default:
+                    // hmmm, an ESC xxx or ESC ESC : this is awkward!
+                    // try to resolve by having two pending bytes: liInp and liDbl
+                    if (liOpr > 0) liOpr=0;
+                    break ;
                 }
             } else {
-                liInp = EOF ;
+                liOpr = 0;    // it's not an operator sequence (gaining two bytes)
             }
 
-            // Execute the new operator
-            switch(liOpr) {
-            case MOD:
-                liOpr = ufGetDta(lzPosOrg, lzPosOut, liOpr, lzOff, liInp, liDbl) ;
-                if (miVerbse == 1) {
-                    fprintf(JDebug::stddbg, "" P8zd " " P8zd " MOD %" PRIzd "\n",
-                            lzPosOrg, lzPosOut, lzOff) ;
-                }
-                lzPosOrg += lzOff ;
-                lzPosOut += lzOff ;
-                break ;
-
-            case INS:
-                liOpr = ufGetDta(lzPosOrg, lzPosOut, liOpr, lzOff, liInp, liDbl) ;
-                if (miVerbse == 1) {
-                    fprintf(JDebug::stddbg, "" P8zd " " P8zd " INS %" PRIzd "\n",
-                            lzPosOrg, lzPosOut, lzOff)   ;
-                }
-                lzPosOut += lzOff ;
-                break ;
-
-            case DEL:
-                lzOff = ufGetInt(mpFilPch);
-                if (miVerbse >= 1) {
-                    fprintf(JDebug::stddbg, "" P8zd " " P8zd " DEL %" PRIzd "\n",
-                            lzPosOrg, lzPosOut, lzOff)  ;
-                }
-                lzPosOrg += lzOff ;
-                liOpr = 0;    // to read next operator from input
-                break ;
-
-            case EQL:
-                /* get length of operation */
-                lzOff = ufGetInt(mpFilPch);
-
-                /* show feedback */
-                if (miVerbse >= 1) {
-                    fprintf(JDebug::stddbg, "" P8zd " " P8zd " EQL %" PRIzd "\n",
-                            lzPosOrg, lzPosOut, lzOff) ;
-                }
-
-                /* execute operation */
-                liRet = mpFilOut.copyfrom(mpFilOrg, lzPosOrg, lzOff) ;
-                if (liRet != EXI_OK){
-                    return liRet ;
-                }
-                lzPosOrg += lzOff ;
-                lzPosOut += lzOff ;
-
-                /* Next operator */
-                liOpr = 0;  // to read next operator from input
-                break ;
-
-            case BKT:
-                lzOff = ufGetInt(mpFilPch) ;
-                if (miVerbse >= 1) {
-                    fprintf(JDebug::stddbg, "" P8zd " " P8zd " BKT %" PRIzd "\n",
-                            lzPosOrg, lzPosOut, lzOff)   ;
-                }
-                lzPosOrg -= lzOff ;
-                liOpr = 0;  // to read next operator from input
-                break ;
+            // If an ESC <opr> is missing, set default operator based on previous operator
+            if (liOpr == 0 || liInp != EOF) {
+                liOpr=MOD ; // the default operator
             }
-        } /* while ! EOF */
-
-        if (miVerbse >= 1) {
-            fprintf(JDebug::stddbg, P8zd" " P8zd " EOF\n",
-                    lzPosOrg, lzPosOut)  ;
+        } else {
+            liInp = EOF ;
         }
 
-        return 1 ;
-    } /* jpatch */
+        // Execute the new operator
+        switch(liOpr) {
+        case MOD:
+            liOpr = ufGetDta(lzPosOrg, lzPosOut, liOpr, lzOff, liInp, liDbl) ;
+            if (miVerbse == 1) {
+                fprintf(JDebug::stddbg, "" P8zd " " P8zd " MOD %" PRIzd "\n",
+                        lzPosOrg, lzPosOut, lzOff) ;
+            }
+            lzPosOrg += lzOff ;
+            lzPosOut += lzOff ;
+            break ;
+
+        case INS:
+            liOpr = ufGetDta(lzPosOrg, lzPosOut, liOpr, lzOff, liInp, liDbl) ;
+            if (miVerbse == 1) {
+                fprintf(JDebug::stddbg, "" P8zd " " P8zd " INS %" PRIzd "\n",
+                        lzPosOrg, lzPosOut, lzOff)   ;
+            }
+            lzPosOut += lzOff ;
+            break ;
+
+        case DEL:
+            lzOff = ufGetInt(mpFilPch);
+            if (lzOff < 0)
+                return lzOff ;
+            if (miVerbse >= 1) {
+                fprintf(JDebug::stddbg, "" P8zd " " P8zd " DEL %" PRIzd "\n",
+                        lzPosOrg, lzPosOut, lzOff)  ;
+            }
+            lzPosOrg += lzOff ;
+            liOpr = 0;    // to read next operator from input
+            break ;
+
+        case EQL:
+            /* get length of operation */
+            lzOff = ufGetInt(mpFilPch);
+            if (lzOff < 0)
+                return lzOff ;
+
+            /* show feedback */
+            if (miVerbse >= 1) {
+                fprintf(JDebug::stddbg, "" P8zd " " P8zd " EQL %" PRIzd "\n",
+                        lzPosOrg, lzPosOut, lzOff) ;
+            }
+
+            /* execute operation */
+            liRet = mpFilOut.copyfrom(mpFilOrg, lzPosOrg, lzOff) ;
+            if (liRet != EXI_OK){
+                return liRet ;
+            }
+            lzPosOrg += lzOff ;
+            lzPosOut += lzOff ;
+
+            /* Next operator */
+            liOpr = 0;  // to read next operator from input
+            break ;
+
+        case BKT:
+            lzOff = ufGetInt(mpFilPch) ;
+            if (lzOff < 0)
+                return lzOff ;
+            if (miVerbse >= 1) {
+                fprintf(JDebug::stddbg, "" P8zd " " P8zd " BKT %" PRIzd "\n",
+                        lzPosOrg, lzPosOut, lzOff)   ;
+            }
+            lzPosOrg -= lzOff ;
+            liOpr = 0;  // to read next operator from input
+            break ;
+        }
+    } /* while ! EOF */
+
+    if (miVerbse >= 1) {
+        fprintf(JDebug::stddbg, P8zd" " P8zd " EOF\n",
+                lzPosOrg, lzPosOut)  ;
+    }
+
+    return EXI_OK ;
+} /* jpatch */
 
 } /* namespace */

@@ -33,20 +33,43 @@ JFileOut::JFileOut( FILE * const apFil):mpFil(apFil)
 int JFileOut::copyfrom( JFile &apFilInp, off_t azPos, off_t azLen){
     jchar *lpBuf ;
     off_t lzLen ;
-    while (azLen > 0) {
-        lpBuf = apFilInp.getbuf(azPos, lzLen);
-        if (lpBuf == null ){
+
+    // First try buffered copying
+    lpBuf = apFilInp.getbuf(azPos, lzLen);
+    if (lpBuf != null ){
+        while (azLen > 0) {
+            if (lpBuf == null ){
+                fprintf(stderr, "Error reading original file.\n");
+                return (EXI_RED);
+            }
+            if (lzLen > azLen)
+                lzLen = azLen ;
+            if (fwrite(lpBuf, sizeof(jchar), lzLen, mpFil) != (size_t) lzLen) {
+                fprintf(stderr, "Error writing output file.\n");
+                return (EXI_WRI);
+            }
+            azLen -= lzLen;
+            azPos += lzLen;
+            if (azLen > 0)
+                lpBuf = apFilInp.getbuf(azPos, lzLen);
+        }
+    } else {
+        // Copy character by character
+        int lcVal ;
+        for (; azLen > 0; azLen --, azPos ++){
+            lcVal = apFilInp.get(azPos);
+            if (lcVal <= EOF)
+                break ;
+            if (putc(lcVal) < 0) {
+                fprintf(stderr, "Error writing output file.\n");
+                return (EXI_WRI);
+            }
+            lcVal = apFilInp.get() ;
+        }
+        if (azLen > 0){
             fprintf(stderr, "Error reading original file.\n");
             return (EXI_RED);
         }
-        if (lzLen > azLen)
-            lzLen = azLen ;
-        if (fwrite(lpBuf, sizeof(jchar), lzLen, mpFil) != (size_t) lzLen) {
-            fprintf(stderr, "Error writing output file.\n");
-            return (EXI_WRI);
-        }
-        azLen -= lzLen;
-        azPos += lzLen;
     }
     return (EXI_OK);
 } /* copyfrom */

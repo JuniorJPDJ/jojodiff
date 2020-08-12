@@ -74,11 +74,11 @@ JHashPos::JHashPos(int aiSze)
             miHshPme, miHshSze,
             mzHshTblPos, &mzHshTblPos[miHshPme], mkHshTblHsh, &mkHshTblHsh[miHshPme]) ;
     #endif
-    #ifndef __MINGW32__
+    #ifdef JDIFF_THROW_BAD_ALLOC
       if ( mzHshTblPos == null ) {
           throw bad_alloc() ;
       }
-    #endif
+    #endif // JDIFF_THROW_BAD_ALLOC
 }
 
 /*

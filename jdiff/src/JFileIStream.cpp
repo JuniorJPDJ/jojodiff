@@ -26,27 +26,32 @@
 #include "JDebug.h"
 
 namespace JojoDiff {
-JFileIStream::JFileIStream(istream &apFil, char const * const asFid) :
-    mpStream(apFil), msFid(asFid), mzPosInp(0), mlFabSek(0)
+JFileIStream::JFileIStream(istream &apFil, char const * const asFid, const bool abSeq)
+:JFile(asFid, abSeq), mpFil(apFil), mzPosInp(0)
 {
+    chkSeq() ;  // Check if file is sequential or not
 }
 
 JFileIStream::~JFileIStream() {
 }
 
 /**
- * Return number of seeks performed.
- */
-long JFileIStream::seekcount() const {return mlFabSek; }
-
-/**
- * For buffered files, return the position of the buffer
- * JFileIStream does not buffer, so return -1
- * @return  -1=no buffering, > 0 : first position in buffer
- */
-off_t JFileIStream::getBufPos() const {
-    return -1;
-};
+* @brief Seek EOF
+*
+* @param EXI_OK (0) or EXI_SEK in cae of error
+*/
+off_t JFileIStream::jeofpos() {
+    mpFil.seekg(0, mpFil.end) ;
+    if (mpFil.fail()){
+        mpFil.clear();
+        return EXI_SEK;
+    }
+    else {
+        off_t lzEof = mpFil.tellg();
+        mpFil.seekg(0, mpFil.beg) ;
+        return lzEof ;
+    }
+} ;
 
 /**
  * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -70,26 +75,32 @@ void JFileIStream::set_lookahead_base (
  * @return 			the read character or EOF or EOB.
  */
 int JFileIStream::get (
-    const int aiSft   /* 0=read, 1=hard ahead, 2=soft ahead  */
+    const eAhead aiSft   /* 0=read, 1=hard ahead, 2=soft ahead  */
 ) {
     return get(mzPosInp, aiSft);
 }
 
 /**
- * Gets one byte from the lookahead file.
+ * Gets one byte from the file.
  */
 int JFileIStream:: get (
     const off_t &azPos,    	/* position to read from                */
-    const int aiTyp     /* 0=read, 1=hard ahead, 2=soft ahead   */
+    const eAhead aiSft      /* 0=read, 1=hard ahead, 2=soft ahead   */
 ) {
     if (azPos != mzPosInp){
-        mlFabSek++;
-        if (mpStream.eof())
-            mpStream.clear();
-        mpStream.seekg(azPos, std::ios::beg); // may throw an exception
+        if (mbSeq){
+            if (aiSft == Read )
+                return EXI_SEK ;
+            else
+                return EOB ;    // on a sequential file, we cannot seek
+        } else {
+            mlFabSek++;
+            if (mpFil.eof())
+                mpFil.clear();
+            mpFil.seekg(azPos, std::ios::beg); // may throw an exception
+        }
     }
     mzPosInp = azPos + 1;
-    return mpStream.get();
+    return mpFil.get();
 } /* function get */
 } /* namespace JojoDiff */
-

@@ -25,6 +25,14 @@
  * Joris Heirbaut        v0.8.2  06-12-2011 Use jfopen/jfclose/jfseek/jfread to avoid interference with LARGEFILE redefinitions
  */
 
+ /*
+ * The advantage of opensource is that anyone can tailor the source code to its needs.
+ *
+ * Certain of the settings below are there to suit the need of someone at some moment,
+ * so certain settings may be outdated. It's difficult to verify, so they will stay
+ * until someone confirms they are not needed anymore.
+ */
+
 #ifndef _JDEFS_H
 #define _JDEFS_H
 
@@ -55,6 +63,7 @@
 #define jfclose  fclose
 #define jfseek   fseeko
 #define jftell   ftello
+#define jfread   fread
 
 // Indicate JDIFF that files may be larger that 2GB
 #if _FILE_OFFSET_BIT == 64
@@ -67,7 +76,7 @@
 // Normal definition
 #define PRIzd "zd"
 
-// MINGW uses ms windows printf that does not recognise %zd
+// MINGW uses ms windows printf that does not use %zd but uses %I64d or %lld
 // unless -D_GNU_SOURCE has been specified
 #ifndef _GNU_SOURCE
 #ifdef __MINGW32__ // #if __MINGW_PRINTF_FORMAT == ms_printf doen't work
@@ -121,18 +130,18 @@ const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1)))
 
 #define EOB (EOF - 1)                   /**< End-Of-Buffer constant              */
 #define EXI_OK   0                      /**< OK Exit code                        */
-#define EXI_EQL  0                      /**< OK Exit code, no differences found  */
 #define EXI_DIF  1                      /**< OK Exit code, differences found     */
-#define EXI_ARG  2                      /**< Error: not enough arguments         */
-#define EXI_FRT  3                      /**< Error opening first file            */
-#define EXI_SCD  4                      /**< Error opening second file           */
-#define EXI_OUT  5                      /**< Error opening output file           */
-#define EXI_SEK  6                      /**< Error seeking file                  */
-#define EXI_LRG  7                      /**< Error on 64-bit number              */
-#define EXI_RED  8                      /**< Error reading file                  */
-#define EXI_WRI  9                      /**< Error writing file                  */
-#define EXI_MEM  10                     /**< Error allocating memory             */
-#define EXI_ERR  20                     /**< Spurious error occured              */
+#define EXI_EQL  2                      /**< OK Exit code, no differences found  */
+#define EXI_ARG  -2                     /**< Error: not enough arguments         */
+#define EXI_FRT  -3                     /**< Error opening first file            */
+#define EXI_SCD  -4                     /**< Error opening second file           */
+#define EXI_OUT  -5                     /**< Error opening output file           */
+#define EXI_SEK  -6                     /**< Error seeking file                  */
+#define EXI_LRG  -7                     /**< Error on 64-bit number              */
+#define EXI_RED  -8                     /**< Error reading file                  */
+#define EXI_WRI  -9                     /**< Error writing file                  */
+#define EXI_MEM  -10                    /**< Error allocating memory             */
+#define EXI_ERR  -20                    /**< Spurious error occured              */
 
 /**
  * Output routine constants

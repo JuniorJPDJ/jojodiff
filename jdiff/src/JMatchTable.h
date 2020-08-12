@@ -133,7 +133,7 @@ private:
 	 * ---------------------------------------------------------------------------*/
 	int check (
 	    off_t &rzPosOrg, off_t &rzPosNew,
-	    int aiLen, int aiSft
+	    int aiLen, const JFile::eAhead aiSft
 	    ) const ;
 
     /**
