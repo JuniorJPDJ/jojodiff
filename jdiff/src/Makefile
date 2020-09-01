@@ -10,16 +10,17 @@ OBJS=JDebug.o JDiff.o JPatcht.o JDefs.o JHashPos.o JMatchTable.o JFileOut.o JFil
 default:	linux
 all: 		linux 
 full:		clean linux
+native:		jdiff
 linux:		jdiff 
 debug:		jdifd 
 
 CC=gcc
 CPP=g++
-NATIVE=-march=native -m64
-CFLAGS=$(NATIVE) -O2 -Wall 
+CFLAGS=$(NATIVE) -m64 -O2 -Wall 
 
 linux:DBG=-s
 debug:DBG=-g -D_DEBUG
+native:CFLAGS=$(CFLAGS) -march=native
 
 %.o: %.cpp
 	$(CPP) $(CFLAGS) $(DBG) -o $@ -c $<

@@ -131,10 +131,11 @@
  * joheirba  v0.8.3r   Aug 2020 Dynamic matching table.
  * joheirba  v0.8.3s   Aug 2020 Allow standard input with "-"
  * joheirba  v0.8.3s   Aug 2020 Option -s for stdio instead of istream
- * joheirba  v0.8.3t   Aug 2020 Integration of jpatct with JFile.getbuf
+ * joheirba  v0.8.3t   Aug 2020 Integration of jpatch with JFile.getbuf
  *                              Refactoring JFileIStreamAhead
  * joheirba  v0.8.3z   Aug 2020 Review matchtable logic for non-compared matched
  * joheirba  v0.8.4b   Sep 2020 Review hash-reinitialization for incremental scanning
+ * joheirba  v0.8.4c   Sep 2020 Finalize release of intermediate version
  *
  *******************************************************************************/
 
@@ -478,11 +479,12 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "  -r --regions             Grouped  human readable output.\n");
         fprintf(JDebug::stddbg, "  -c --console             Write verbose and debug info to stdout.\n\n");
 
-        fprintf(JDebug::stddbg, "  -b --better -bb...       Better: more memory, work harder.\n");
-        fprintf(JDebug::stddbg, "  -f --lazy                Lazy : no unbuffered searching (often slower).\n");
-        fprintf(JDebug::stddbg, "  -ff                      Lazier : no full index table.\n");
-        fprintf(JDebug::stddbg, "  -p --sequential-source   Sequential source (to avoid) (- for stdin).\n");
-        fprintf(JDebug::stddbg, "  -q --sequential-dest     Sequential destination (- for stdin).\n");
+        fprintf(JDebug::stddbg, "  -b --better -bb...       Better: use more memory, search more.\n");
+        fprintf(JDebug::stddbg, "  -bb                      Best:   even more memory, search more.\n");
+        fprintf(JDebug::stddbg, "  -f --lazy                Lazy:   no unbuffered searching (often slower).\n");
+        fprintf(JDebug::stddbg, "  -ff                      Lazier: no full index table.\n");
+        fprintf(JDebug::stddbg, "  -p --sequential-source   Sequential source (to avoid !) (with - for stdin).\n");
+        fprintf(JDebug::stddbg, "  -q --sequential-dest     Sequential destination (with - for stdin).\n");
         #ifndef JDIFF_STDIO_ONLY
         fprintf(JDebug::stddbg, "  -s --stdio               Use stdio files (for testing).\n");
         #endif // JDIFF_STDIO_ONLY

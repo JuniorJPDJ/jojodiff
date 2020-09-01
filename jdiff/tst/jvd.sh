@@ -25,4 +25,4 @@ else
 fi
 
 #head --bytes=$pos $1 | tail --bytes=$sze | pr -tv
-vim -d <( od -j $pos1 -N $sze -Ad -txz "$1" ) <( od -j $pos2 -N $sze -Ad -txz "$2" ) 
+vim -d <( od -j $pos1 -N $sze -Ad -tx1z "$1" ) <( od -j $pos2 -N $sze -Ad -tx1z "$2" ) 

@@ -184,7 +184,7 @@ int JFileAhead::get_frombuffer (
             int liCmp ;
             int liLen ;
             jseek(azPos) ;
-            if (lzLen > sizeof(lcTst))
+            if (lzLen > (off_t) sizeof(lcTst))
                 liLen = sizeof(lcTst);
             else
                 liLen = lzLen ;
@@ -285,13 +285,13 @@ jchar * JFileAhead::getbuf(const off_t azPos, off_t &azLen, const eAhead aiSft) 
         }
     }
 
-    //@#if debug
+    #if debug
     if (azPos >= mzPosInp || azPos < mzPosInp - miBufUsd) {
         fprintf(JDebug::stddbg, "JFileAhead::getbuf(%s," P8zd "," P8zd ",%d)->%2x (sto %p) failed !\n",
                 msJid, azPos, azLen, aiSft, *mpInp, mpInp);
         exit(- EXI_SEK);
     }
-    //#endif
+    #endif
 
     return lpDta ;
 }
@@ -444,9 +444,6 @@ JFileAhead::eBufDne JFileAhead::get_fromfile (
 
     case (Append):
         /* Read new block of data: how many bytes can we read ? */
-//@083b        liTdo = mpMax - mpInp ;             // Calculate max bytes we can read
-//        if (liTdo > miBlkSze)
-//            liTdo = miBlkSze ;              // Reduce to blocksize
         liTdo = miBlkSze ;
         if (mpInp + liTdo > mpMax){
             liTdo = mpMax - mpInp ;
@@ -515,7 +512,6 @@ JFileAhead::eBufDne JFileAhead::get_fromfile (
         miBufUsd += liDne ;
         if ( miBufUsd > mlBufSze ) {
             miBufUsd = mlBufSze ;
-            //@mzPosBse = mzPosInp - mlBufSze ;
         }
 
         // Cycle buffer         //@ always do this above to simplify return code

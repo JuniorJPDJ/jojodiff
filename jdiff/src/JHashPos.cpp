@@ -69,7 +69,7 @@ JHashPos::JHashPos(int aiSze)
 
     #if debug
       if (JDebug::gbDbg[DBGHSH])
-        fprintf(JDebug::stddbg, "Hash Ini sizeof=%2d+%2d=%2d, %d samples, %d bytes, address=%p-%p,%p-%p.\n",
+        fprintf(JDebug::stddbg, "Hash Ini sizeof=%2ld+%2ld=%2ld, %d samples, %d bytes, address=%p-%p,%p-%p.\n",
             sizeof(hkey), sizeof(off_t), sizeof(hkey) + sizeof(off_t),
             miHshPme, miHshSze,
             mzHshTblPos, &mzHshTblPos[miHshPme], mkHshTblHsh, &mkHshTblHsh[miHshPme]) ;

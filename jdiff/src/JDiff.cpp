@@ -227,8 +227,8 @@ int JDiff::jdiff()
               fprintf(JDebug::stddbg, "Inaccurate solution at positions %" PRIzd "/%" PRIzd "!\n", lzPosOrg, lzPosNew);
             }
 
-            //@ lzAhd=SMPSZE / 2; /* Advance at least half-a samplesize bock */
-            lzAhd = gpHsh->get_reliability() / 2 ; //@ 083x: advance depending on hashtable overloading ?
+            //v083x: advance depending on hashtable overloading
+            lzAhd = gpHsh->get_reliability() / 2 ;
 
         } else {
             // Look for a new solution
@@ -372,21 +372,6 @@ int JDiff::ufFndAhd (
             // Set lookahead base position
             mpFilOrg->set_lookahead_base(azRedOrg);
 
-//@084c            // check if mzAhdOrg is (again) in the buffer
-//            if (mzAhdOrg > 0 && miValOrg == EOB) {
-//                // reread the EOB-position to check if EOB is gone
-//                miValOrg --;
-//            }
-//@084b            if (mzAhdOrg > 0 && miValOrg == EOB){
-//                // reread the EOB-position to check if EOB is gone
-//                miValOrg = mpFilOrg->get(mzAhdOrg, liSftOrg) ;
-//
-//                // check if the source position has jumped forward
-//                if (miValOrg == EOB && azRedOrg > mzAhdOrg){
-//                    mzAhdOrg=0 ; // re-initialize and restart from zero
-//                }
-//            }
-
             // check if the source position has jumped forward
             if (azRedOrg > mzAhdOrg + SMPSZE){
                 mzAhdOrg = 0 ;  // reinitialize
@@ -443,7 +428,7 @@ int JDiff::ufFndAhd (
                 for (liMax=miAhdMax; liMax > 0 ; liMax --) {
                     miValOrg = mpFilOrg->get(++ mzAhdOrg, liSftOrg) ;
                     if (miValOrg <= EOF){
-                        mzAhdOrg --;    //@084c New EOB logic
+                        mzAhdOrg --;
                         break ;
                     }
                     mlHshOrg = gpHsh->hash(mlHshOrg, miPrvOrg, miValOrg, miEqlOrg) ;
@@ -688,8 +673,11 @@ int JDiff::ufFndAhd (
         azSkpNew = 0 ;
         azAhd    = (mzAhdNew - azRedNew) ;
         if (azAhd < SMPSZE){
-            //@ fprintf to remove
-            fprintf(JDebug::stddbg, "\nForcing skip of SMPSZE bytes\n");
+            #if debug
+            if (JDebug::gbDbg[DBGAHD]){
+                fprintf(JDebug::stddbg, "\nForcing skip of SMPSZE bytes\n");
+            }
+            #endif // debug
             azAhd = SMPSZE ;
         }
         return 0 ;
@@ -764,9 +752,9 @@ int JDiff::ufFndAhdScn ()
             gpHsh->add(lkHshOrg, lzPosOrg, liEqlOrg) ;
 
             #if debug
-                if (JDebug::gbDbg[DBGAHH])
-                    fprintf(JDebug::stddbg, "ufHshAdd(%2x -> %8" PRIhkey ", " P8zd ", %8d)\n",
-                            lcValOrg, lkHshOrg, lzPosOrg, 0);
+            if (JDebug::gbDbg[DBGAHH])
+                fprintf(JDebug::stddbg, "ufHshAdd(%2x -> %8" PRIhkey ", " P8zd ", %8d)\n",
+                        lcValOrg, lkHshOrg, lzPosOrg, 0);
             #endif
 
             /* output position every 16MB */

@@ -484,9 +484,6 @@ bool JMatchTable::getbest (
                     if (liCurCnt < 0)
                         liCurCnt = (lpCur->iiTyp < 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
 
-                    //@if (liCurCnt < 2){
-                        //  a non-confirmed match is too risky
-                    //@} else
                     if (lzTstNew <= lpCur->izBeg) {
                         // We're still before the first detected match,
                         // so a potential solution probably starts at given match
@@ -517,9 +514,10 @@ bool JMatchTable::getbest (
                     if (lpBst == NULL)
                         // first one, take it
                         lpBst=lpCur ;
-                    else if (liCurCmp < 2 && liBstCmp > 4)
+                    else if (liCurCmp < 2 && liBstCmp > 4){
                         // avoid using low-quality matches (liCurCmp < 2 == low quality)
-                        liCurCnt = -1 ;  //@breakpoint
+                        //@liCurCnt = -1 ;  //@breakpoint
+                    }
                     else if (liBstCmp < 2 && liCurCmp > 4)
                         // avoid using low-quality matches (liBstCmp < 2 == low quality)
                         lpBst=lpCur ;
@@ -689,7 +687,7 @@ int JMatchTable::check (
             azPosOrg--;
             break;
         }
-        else if ((lcNew = mpFilNew->get(azPosNew ++, aiSft)) < 0) { //@JFile::SoftAhead)) < 0){
+        else if ((lcNew = mpFilNew->get(azPosNew ++, aiSft)) < 0) {
             azPosNew--;
             azPosOrg--;
             break;
