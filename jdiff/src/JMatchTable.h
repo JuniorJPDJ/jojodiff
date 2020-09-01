@@ -75,8 +75,8 @@ public:
 	 * @param   azBseNew Current reading position in new file
 	 * @param   azBstOrg    out: best found new position for original file
 	 * @param   azBstNew    out: best found new position for new file
-	 * @return  false= match table is full, cleanup before next run
-     * @return  true = match table still has some room for new matches
+	 * @return  false= no solution has been found
+     * @return  true = a solution has been found
 	 * ---------------------------------------------------------------------------*/
 	bool getbest (
 	  off_t const &azBseOrg,       /* base positions       */
@@ -88,13 +88,14 @@ public:
     /**
      * @brief Cleanup, check free space and fastcheck best match.
      *
+     * @param       azBseOrg    Cleanup all matches before this position
      * @param       azRedNew    Current reading position
-     * @param       azBseNew    Cleanup all mathes before this position
+     * @param       liBck       Max distance to look back
      *
      * @return < 0  Negated number valid matches: one of the matches meets azBseNew
      * @return > 0  Number of valid matches
      * ---------------------------------------------------------------------------*/
-    int cleanup ( off_t const azRedNew, int const liBck );
+    int cleanup ( off_t const azBseOrg, off_t const azRedNew, int const liBck );
 
 private:
     /**

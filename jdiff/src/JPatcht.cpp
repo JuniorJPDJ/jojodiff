@@ -98,7 +98,7 @@ int JPatcht::ufPutDta( off_t const lzPosOrg, off_t const lzPosOut,
 {
     mpFilOut.putc(aiDta) ;
     if (miVerbse > 1) {
-        fprintf(JDebug::stddbg, P8zd " " P8zd " %s %3o %c\n",
+        fprintf(JDebug::stddbg, P8zd " " P8zd " %s %02x %c\n",
                   lzPosOrg + ((liOpr == MOD) ? azOff : 0),
                   lzPosOut + azOff,
                   (liOpr == MOD) ? "MOD" : "INS",
@@ -118,7 +118,7 @@ int JPatcht::ufPutDta( off_t const lzPosOrg, off_t const lzPosOut,
 * @param    aiDbl       Second pending byte (EOF = no pending byte)
 */
 int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
-                      int const liOpr, off_t &lzMod, int liPnd, int liDbl )
+                      int const liOpr, off_t &lzMod, int const liPnd, int const liDbl )
 {
     int liInp ;         /* Input from mpFilPch                  */
     int liNew;          /* New operator                         */
@@ -127,14 +127,14 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
 
     /* First, output the pending bytes:
        liPnd  liDbl     Output
-        xxx    <na>     xxx
-        ESC    xxx      ESC xxx
         ESC    ESC      ESC ESC
+        ESC    xxx      ESC xxx
+        xxx    EOF      xxx
     */
     if (liPnd != EOF) {
-        lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, liPnd, liDbl==EOF ? -1 : -2) ;
+        lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, liPnd, lzMod) ;
         if (liPnd == ESC && liDbl != ESC) {
-          lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, liDbl, -1) ;
+          lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, liDbl, lzMod) ;
         }
     }
 
@@ -152,9 +152,9 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
                     break ;
                 case ESC:
                     // Double ESC: drop one
-                    if (miVerbse > 1) {
+                    if (miVerbse > 2) {
                       fprintf(JDebug::stddbg, "" P8zd " " P8zd " ESC ESC\n",
-                              lzPosOrg+lzMod, lzPosOut) ;
+                              lzPosOrg + ((liOpr == MOD) ? lzMod : 0), lzPosOut + lzMod) ;
                     }
 
                     // Write the single ESC and continue
@@ -163,9 +163,9 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
 
                 default:
                   // ESC <xxx> with <xxx> not an opcode: output as they are
-                  if (miVerbse > 1) {
+                  if (miVerbse > 2) {
                     fprintf(JDebug::stddbg, "" P8zd " " P8zd " ESC XXX\n",
-                            lzPosOrg+lzMod, lzPosOut) ;
+                            lzPosOrg + ((liOpr == MOD) ? lzMod : 0), lzPosOut + lzMod) ;
                   }
 
                   // Write the escape, the <xxx> and continue
@@ -176,11 +176,12 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
             if (liNew == liOpr) {
                 // <ESC> MOD within an <ESC> MOD is meaningless: handle as data
                 // <ESC> INS within an <ESC> INS is meaningless: handle as data
-                lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, ESC, lzMod) ;
-                if (miVerbse > 1) {
-                    fprintf(JDebug::stddbg, P8zd " " P8zd " MOD %3o ESC\n",
-                            lzPosOrg+lzMod-1, lzPosOut-1, ESC)  ;
+                if (miVerbse > 2) {
+                    fprintf(JDebug::stddbg, P8zd " " P8zd " ESC %02x\n",
+                            lzPosOrg + ((liOpr == MOD) ? lzMod : 0), lzPosOut + lzMod, liNew) ;
                 }
+
+                lzMod += ufPutDta(lzPosOrg, lzPosOut, liOpr, ESC, lzMod) ;
                 liInp=liNew ;   // will be output below
             } else {
                 return liNew ;
@@ -207,18 +208,18 @@ int JPatcht::ufGetDta(off_t const lzPosOrg, off_t const lzPosOut,
 *******************************************************************************/
 int JPatcht::jpatch ()
 {
-    int liInp ;         /* Current input from patch file          */
-    int liDbl = EOF ;   /* Pending byte (EOF = no pending bye)    */
-    int liOpr ;         /* Current operand                        */
-    int liRet;          /* Return code from output file           */
+    int liInp ;         /**< 1st Pending byte (EOF = no pending bye)*/
+    int liDbl = EOF ;   /**< 2nd Pending byte (EOF = no pending bye)*/
+    int liOpr ;         /**< Current operand                        */
+    int liRet;          /**< Return code from output file           */
 
-    off_t lzOff ;       /* Current operand's offset               */
-    off_t lzPosOrg=0;   /* Position in source file                */
-    off_t lzPosOut=0;   /* Position in destination file           */
+    off_t lzOff ;       /**< Current operand's offset               */
+    off_t lzPosOrg=0;   /**< Position in source file                */
+    off_t lzPosOut=0;   /**< Position in destination file           */
 
     liOpr = 0 ;   // no operator
     while (liOpr != EOF) {
-        // Read operand from input
+        // Read operator from input, unless this has already been done
         if (liOpr == 0) {
             liInp = mpFilPch.get();
             if (liInp == EOF)
@@ -243,24 +244,21 @@ int JPatcht::jpatch ()
                     return (EXI_ERR);
                     break ;
                 default:
-                    // hmmm, an ESC xxx or ESC ESC : this is awkward!
-                    // try to resolve by having two pending bytes: liInp and liDbl
-                    if (liOpr > 0) liOpr=0;
+                    // ESC xxx or ESC ESC at the start of a sequence
+                    // Resolve by double pending bytes: liInp and liDbl
+                    liOpr=MOD;
                     break ;
                 }
             } else {
-                liOpr = 0;    // it's not an operator sequence (gaining two bytes)
-            }
-
-            // If an ESC <opr> is missing, set default operator based on previous operator
-            if (liOpr == 0 || liInp != EOF) {
-                liOpr=MOD ; // the default operator
+                liOpr = MOD;    // If an ESC <opr> is missing, set default operator (gaining two bytes)
+                liDbl = EOF;
             }
         } else {
-            liInp = EOF ;
+            liInp = EOF ;   // only needed when switching between MOD and INS
+            liDbl = EOF ;
         }
 
-        // Execute the new operator
+        // Execute the operator
         switch(liOpr) {
         case MOD:
             liOpr = ufGetDta(lzPosOrg, lzPosOut, liOpr, lzOff, liInp, liDbl) ;

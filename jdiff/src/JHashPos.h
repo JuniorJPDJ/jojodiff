@@ -185,11 +185,6 @@ public:
 	void dist(off_t azMax, int aiBck);
 
 	/**
-	* @brief Return the index to use to create a hashtable of at most the given size.
-	*/
-	//@static int get_size_index(int sze);
-
-	/**
     * @brief return hashtable prime number
     */
 	int get_hashprime(){return miHshPme;}

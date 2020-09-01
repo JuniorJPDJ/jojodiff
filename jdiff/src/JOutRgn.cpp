@@ -50,14 +50,14 @@ bool JOutRgn::put (
       case (MOD) :
         // a MOD sequence is only needed after an INS sequence
         if ( siOprCur == INS ) {
-            gzOutBytCtl+=2 ; //@+ufPutLen(szOprCnt);
+            gzOutBytCtl+=2 ;
         }
         gzOutBytDta+=szOprCnt ;
-        fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - szOprCnt - azLen, szOprCnt) ;
+        fprintf(mpFilOut, P8zd " " P8zd " MOD %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew - szOprCnt, szOprCnt) ;
         break;
 
       case (INS) :
-        gzOutBytCtl+=2 ; //@+ufPutLen(szOprCnt);
+        gzOutBytCtl+=2 ;
         gzOutBytDta+=szOprCnt ;
         fprintf(mpFilOut, P8zd " " P8zd " INS %" PRIzd "\n", azPosOrg, azPosNew - szOprCnt, szOprCnt) ;
         break;
@@ -65,13 +65,13 @@ bool JOutRgn::put (
       case (DEL) :
         gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytDel+=szOprCnt;
-        fprintf(mpFilOut, P8zd " " P8zd " DEL %" PRIzd "\n", azPosOrg - szOprCnt - azLen, azPosNew - azLen, szOprCnt);
+        fprintf(mpFilOut, P8zd " " P8zd " DEL %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew, szOprCnt);
         break;
 
       case (BKT) :
         gzOutBytCtl+=2+ufPutLen(szOprCnt);
         gzOutBytBkt+=szOprCnt;
-        fprintf(mpFilOut, P8zd " " P8zd " BKT %" PRIzd "\n", azPosOrg + szOprCnt - azLen, azPosNew - azLen, szOprCnt);
+        fprintf(mpFilOut, P8zd " " P8zd " BKT %" PRIzd "\n", azPosOrg + szOprCnt, azPosNew, szOprCnt);
         break;
 
       case (EQL) :

@@ -213,6 +213,12 @@ int JMatchTable::add (
         mpMchGld = lpCur ;
         mzGldDlt = lzDlt - 1 ;
 
+        #if debug
+        if (JDebug::gbDbg[DBGMCH])
+          fprintf(JDebug::stddbg, "Mch Add (" P8zd ">" P8zd "<" P8zd ")  Bse (%" PRIzd ")\n",
+                  azFndOrgAdd, lzDlt, azFndNewAdd, azRedNew) ;
+        #endif
+
         // fill out the form
         lpCur->izOrg = azFndOrgAdd ;
         lpCur->izNew = azFndNewAdd ;
@@ -240,16 +246,10 @@ int JMatchTable::add (
             }
         }
 
-        #if debug
-        if (JDebug::gbDbg[DBGMCH])
-          fprintf(JDebug::stddbg, "Mch Add (" P8zd "," P8zd ")  Bse (%" PRIzd ")\n",
-                  azFndOrgAdd, azFndNewAdd, azRedNew) ;
-        #endif
-
         return (mpMchFre != null || miMchFre > 0) ; // still place or not ?
     } else {
         #if debug
-        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch (" P8zd ", " P8zd ") Ful\n",
+        if (JDebug::gbDbg[DBGMCH]) fprintf(JDebug::stddbg, "Mch Ful (" P8zd ", " P8zd ")\n",
                   azFndOrgAdd, azFndNewAdd) ;
         #endif
 
@@ -266,7 +266,7 @@ int JMatchTable::add (
  * @return < 0  Negated number valid matches: one of the matches meets azBseNew
  *         > 0  Number of valid matches
  * ---------------------------------------------------------------------------*/
-int JMatchTable::cleanup ( off_t const azRedNew, int const liBck ){
+int JMatchTable::cleanup ( off_t const azBseOrg, off_t const azRedNew, int const liBck ){
     rMch *lpCur ;
     rMch *lpPrv ;
     int  liFnd=0 ;      /* number of valid matches left */
@@ -278,7 +278,10 @@ int JMatchTable::cleanup ( off_t const azRedNew, int const liBck ){
         lpCur=mpMch[liIdx];
         while(lpCur != null)  {
             // if bad or old
-            if ((lpCur->izNew < azRedNew - liBck) || (lpCur->iiCnt < 2 && lpCur->iiCmp<=0)) {
+            if ((lpCur->izNew < azRedNew - liBck)               // old position on destination file
+                || (azBseOrg > 0 && lpCur->izOrg < azBseOrg)    // old position on source file
+           //@     || (lpCur->iiCnt < 2 && lpCur->iiCmp<=0))       // low match count and bad compare
+            ) {
                 // remove from list
                 if (lpPrv == null)
                     mpMch[liIdx] = lpCur->ipNxt ;
@@ -338,8 +341,12 @@ void JMatchTable::calcPosOrg(rMch *apCur, off_t &azTstOrg, off_t &azTstNew) cons
         if (azTstNew + apCur->izDlt >= 0) {
             azTstOrg = azTstNew + apCur->izDlt;
         } else {
-            azTstNew -= azTstOrg ;
-            azTstOrg = 0 ;
+            // azTstOrg would become negative, so advance azTstNew till azTstOrg == 0
+            azTstNew = - apCur->izDlt ;
+            azTstOrg = 0;
+            // azTstOrg = azTstNew + apCur->izDlt;
+            // azTstNew = azTstNew - azTstOrg
+            // azTstOrg = 0
         }
     }
 }
@@ -368,8 +375,6 @@ bool JMatchTable::getbest (
     off_t lzTstNew ;        // test/found position in new file
     off_t lzTstOrg ;        // test/found position in old file
 
-    //@int liRlb = mpHsh->get_reliability() ;  // current unreliability range
-
     #ifdef debug
     int liRlbMax=0;     // measured reliability distance
     int liRlbCur;
@@ -377,241 +382,257 @@ bool JMatchTable::getbest (
     int liRlbSum=0;
     #endif // debug
 
-    // add function has set a candidate, take this one first
+    // add function has set a candidate, take this one
     if (mpMchBst != null) {
         lpBst=mpMchBst ;
         azBstNew = lpBst->izTst;
         azBstOrg = lpBst->izTst + lpBst->izDlt ;
         liBstCnt = lpBst->iiCnt;
         liBstCmp = lpBst->iiCmp;
-    } else
+    } else {
 
-    /* loop on the table of matches */
-    for (liIdx = 0; liIdx < miMchPme; liIdx ++) {
-        for (lpPrv=null, lpCur = mpMch[liIdx]; lpCur != null; ) {
-//@            if (lpCur==lpBst){
-//                lpPrv=lpCur;
-//                lpCur=lpCur->ipNxt;
-//                continue ;
-//            }
-            liCurCnt=-1;
+        /* loop on the table of matches */
+        for (liIdx = 0; liIdx < miMchPme; liIdx ++) {
+            for (lpPrv=null, lpCur = mpMch[liIdx]; lpCur != null; ) {
+    //@            if (lpCur==lpBst){
+    //                lpPrv=lpCur;
+    //                lpCur=lpCur->ipNxt;
+    //                continue ;
+    //            }
+                liCurCnt=-1;
 
-            /* check if the match yields a solution on this position */
-            lzTstNew = azRedNew ;                              // start test at current read position
+                /* check if the match yields a solution on this position */
+                lzTstNew = azRedNew ;                              // start test at current read position
 
-            /* calculate the test position on the original file by applying izDlt */
-            calcPosOrg(lpCur, lzTstOrg, lzTstNew);
+                /* calculate the test position on the original file by applying izDlt */
+                calcPosOrg(lpCur, lzTstOrg, lzTstNew);
 
-            /* number of bytes to check before failing */
-            if (lpCur->izBeg - lzTstNew + 1 > EQLMAX + SMPSZE)
-                liDst = lpCur->izBeg - lzTstNew + 1 ;
-            else
-                liDst = EQLMAX + SMPSZE ;
+                /* number of bytes to check before failing */
+                if (lpCur->izBeg - lzTstNew + 1 > EQLMAX + SMPSZE)
+                    liDst = lpCur->izBeg - lzTstNew + 1 ;
+                else
+                    liDst = EQLMAX + SMPSZE ;
 
-            /* if the current best solution is already optimal, then no need to try to be better */
-            if (lpBst != null && liBstCmp == EQLMAX && liDst > azBstNew - azRedNew + liBstCmp) {
-                liDst = azBstNew - azRedNew + liBstCmp ;
-            }
+                /* if the current best solution is already optimal, then no need to try to be better */
+                if (lpBst != null && liBstCmp == EQLMAX && liDst > azBstNew - azRedNew + liBstCmp) {
+                    liDst = azBstNew - azRedNew + liBstCmp ;
+                }
 
-            /* reuse earlier compare result ? */
-            if (lzTstNew <= lpCur->izTst) {
-                // The new test position is still before the found equal region.
-                // So the found equal region is still perfectly valid, no need to check again.
-                liCurCmp = lpCur->iiCmp ;
-                lzTstOrg = lzTstOrg + (lpCur->izTst - lzTstNew) ;
-                lzTstNew = lpCur->izTst ;
-            } else if (lzTstNew <= lpCur->izTst + lpCur->iiCmp){
-                // The new test position is within the found equal region.
-                // If we keep the equal region, it should be shortened, so see is it can be reused
-                if (lpCur->iiCmp < EQLMAX) {
-                  // The found region < EQLMAX, so in ends after iiCmp.
-                  // We only have to shorten iiCmp to correspond with lzTstNew;
-                  liCurCmp = lpCur->iiCmp - (lzTstNew - lpCur->izTst) ;
+                /* reuse earlier compare result ? */
+                if (lpCur->iiCmp <= 0) {
+                    liCurCmp = 0 ;
                 } else {
-                  // We could shorten, but maybe the region extends beyond EQLMAX
-                  // If we shorten, we could loose this potentially important region.
-                  // So it's better to check agan.
-                  // In principle, we could reuse the shortened part of the previous check,
-                  // but that's only a small performance optimization, i guess.
-                  liCurCmp = 0 ;
-                }
-            } else {
-                // The new test position is beyond the earlioer found equal region, so
-                // it can't be reused: check again.
-                liCurCmp = 0 ;
-            }
-            if (liCurCmp == 0) {
-                /* compare */
-                liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
-
-                /* store result for later */
-                if (liCurCmp>0){
-                    lpCur->izTst = lzTstNew ;
-                    lpCur->iiCmp = liCurCmp ;
-                } else if (lpCur->izNew >= azRedNew) {
-                    siHshRpr++ ;
-                }
-            }
-
-            #ifdef debug
-            if (liCurCmp > 0){
-                /* measure reliability distance */
-                //@liRlbCur = lpCur->izBeg - lzTstNew ;
-                liRlbCur = (lpCur->izNew - lpCur->izBeg) / lpCur->iiCnt ;
-                if (liRlbCur > 0){
-                    liRlbSum+=liRlbCur;
-                    liRlbCnt++;
-                }
-                if (liRlbCur > liRlbMax){
-                    liRlbMax = liRlbCur ;
-                }
-            }
-            #endif // debug
-
-            /* Handle EOB */
-            if (liCurCmp < 0){
-                // EOB was reached, so rely on info from the hashtable: iiCnt, izBeg and izNew
-                if (liCurCnt < 0)
-                    liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
-
-                if (liCurCnt < 2){
-                    //  a non-confirmed match is too risky
-                } else if (lzTstNew <= lpCur->izBeg) {
-                    // We're still before the first detected match,
-                    // so a potential solution probably starts at given match
-                    lzTstNew = lpCur->izBeg ;
-                    liCurCmp = liCurCnt ;
-                } else if (lzTstNew <= lpCur->izNew) {
-                    // We're in between the first and last detected match,
-                    // prorate liCurCmp
-                    liCurCmp = liCurCnt * (lzTstNew - lpCur->izBeg)
-                                  / (lpCur->izNew - lpCur->izBeg) ;
-                }
-                if (liCurCmp > 0){
-                    // reduce hashtable match, real compares are better
-                    liCurCmp /= 2 ;
-
-                    // calculate corresponding lzPosOrg
-                    calcPosOrg(lpCur, lzTstOrg, lzTstNew) ;
-                } else {
-                  liCurCmp = -1;
-                }
-            }
-
-            /* evaluate: keep the best solution */
-            if (liCurCmp > 0){
-                if (lpBst == NULL)
-                    // first one, take it
-                    lpBst=lpCur ;
-                else if (lzTstNew + FZY < azBstNew)
-                    // new one is clearly better (nearer)
-                    lpBst=lpCur ;
-                else if (lzTstNew <= azBstNew + FZY) {
-                    // maybe better (nearer): check in more detail
-                    if (lzTstNew - liCurCmp < azBstNew - liBstCmp) {
-                        // new one is longer
-                        lpBst=lpCur ;
-                    } else if (lzTstNew - liCurCmp == azBstNew - liBstCmp) {
-                        // If all else is equal, then rely on the hash counter
-                        if (liCurCnt < 0)
-                            liCurCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
-                        if (liCurCnt > liBstCnt)
-                            // higher hash-match counter = probably longer
-                            lpBst=lpCur ;
-                    }
-                }
-
-                if (lpBst==lpCur){
-                    azBstNew = lzTstNew ;
-                    azBstOrg = lzTstOrg ;
-                    liBstCnt = liCurCnt ;
-                    liBstCmp = liCurCmp ;
-                    if (liCurCnt < 0)
-                        liBstCnt = (lpCur->iiTyp < 0) ? 0 : lpCur->iiCnt ;
-                    else
-                        liBstCnt = liCurCnt ;
-                }
-
-                /* show table */
-                #if debug
-                if (JDebug::gbDbg[DBGMCH])
-                    fprintf(JDebug::stddbg,
-                        "Sol %5d %c [%c" P8zd "<" P8zd ">" P8zd ":" P8zd ":%4d]" P8zd ":%d\n",
-                        liCurCmp,
-                        (lpBst == lpCur)?'*':' ',
-                        (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
-                        lpCur->izOrg, lpCur->izDlt, lpCur->izNew, lpCur->izBeg, lpCur->iiCnt,
-                        lzTstNew, liDst) ;
-                #endif
-
-                // normal next
-                lpPrv = lpCur ;
-                lpCur = lpCur->ipNxt ;
-
-            } else {
-                /* show table */
-                #if debug
-                if (JDebug::gbDbg[DBGMCH])
-                    fprintf(JDebug::stddbg,
-                        "%s %5d %c [%c" P8zd "<" P8zd ">" P8zd ":" P8zd ":%4d]" P8zd ":%d\n",
-                        (lpCur->iiCnt < 2) ? "Cln" : "Mch",
-                        liCurCmp, ' ',
-                        (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
-                        lpCur->izOrg, lpCur->izDlt, lpCur->izNew, lpCur->izBeg, lpCur->iiCnt,
-                        lzTstNew, liDst) ;
-                #endif
-
-                /* useless ? : clean it up to make room for other (better?) matches */
-                if ((lpCur->iiCnt < 2) && lpCur->izNew < azRedNew) {
-                    // remove from list
-                    if (lpPrv == null)
-                        mpMch[liIdx] = lpCur->ipNxt ;
-                    else
-                        lpPrv->ipNxt = lpCur->ipNxt ;
-
-                    // add to free-list
-                    lpCur->ipNxt = mpMchFre ;
-                    mpMchFre = lpCur ;
-
-                    // next after remove
-                    if (lpPrv == null){
-                        lpCur = mpMch[liIdx] ;
+                    if (lzTstNew <= lpCur->izTst) {
+                        // The new test position is still before the found equal region.
+                        // So the found equal region is still perfectly valid, no need to check again.
+                        liCurCmp = lpCur->iiCmp ;
+                        lzTstOrg = lzTstOrg + (lpCur->izTst - lzTstNew) ;
+                        lzTstNew = lpCur->izTst ;
+                    } else if (lzTstNew <= lpCur->izTst + lpCur->iiCmp){
+                        // The new test position is within the found equal region.
+                        // If we keep the equal region, it should be shortened, so see is it can be reused
+                        if (lpCur->iiCmp < EQLMAX) {
+                          // The found region < EQLMAX, so it ends after iiCmp.
+                          // We only have to shorten iiCmp to correspond with lzTstNew;
+                          liCurCmp = lpCur->iiCmp - (lzTstNew - lpCur->izTst) ;
+                          if (liCurCmp == 1)
+                            liCurCmp = 0 ;
+                        } else {
+                          // We could shorten, but maybe the region extends beyond EQLMAX
+                          // If we shorten, we could loose this potentially important region.
+                          // So it's better to check again.
+                          // In principle, we could reuse the shortened part of the previous check,
+                          // but that's only a small performance optimization, i guess.
+                          liCurCmp = 0 ;
+                        }
                     } else {
-                        lpCur = lpPrv->ipNxt ;
+                        // The new test position is beyond the earlier found equal region, so
+                        // it can't be reused: check again.
+                        liCurCmp = 0 ;
                     }
-                } else {
+                }
+                if (liCurCmp <= 0) {
+                    /* compare */
+                    liCurCmp = check(lzTstOrg, lzTstNew, liDst, mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
+
+                    /* store result for later */
+                    if (liCurCmp != 0){
+                        lpCur->izTst = lzTstNew ;
+                        lpCur->iiCmp = liCurCmp ;
+                    } else if (lpCur->izNew >= azRedNew) {
+                        siHshRpr++ ;
+                    }
+                }
+
+                #ifdef debug
+                if (liCurCmp > 0){
+                    /* measure reliability distance */
+                    liRlbCur = (lpCur->izNew - lpCur->izBeg) / lpCur->iiCnt ;
+                    if (liRlbCur > 0){
+                        liRlbSum+=liRlbCur;
+                        liRlbCnt++;
+                    }
+                    if (liRlbCur > liRlbMax){
+                        liRlbMax = liRlbCur ;
+                    }
+                }
+                #endif // debug
+
+                /* Handle EOB */
+                if (liCurCmp < 0){
+                    // EOB was reached, so rely on info from the hashtable: iiCnt, izBeg and izNew
+                    if (liCurCnt < 0)
+                        liCurCnt = (lpCur->iiTyp < 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
+
+                    //@if (liCurCnt < 2){
+                        //  a non-confirmed match is too risky
+                    //@} else
+                    if (lzTstNew <= lpCur->izBeg) {
+                        // We're still before the first detected match,
+                        // so a potential solution probably starts at given match
+                        lzTstNew = lpCur->izBeg ;
+                        liCurCmp = liCurCnt ;
+                    } else if (lzTstNew <= lpCur->izNew) {
+                        // We're in between the first and last detected match:
+                        // Prorate liCurCmp, but never lower than 1
+                        liCurCmp = liCurCnt * (lpCur->izNew - lzTstNew)
+                                      / (lpCur->izNew - lpCur->izBeg) ;
+                        if (liCurCmp <= 1)
+                            liCurCmp = 1 ;
+                    }
+                    if (liCurCmp > 0){
+                        // reduce hashtable match, real compares are better
+                        //if (liCurCmp > 2)
+                        liCurCmp = 1 + liCurCmp / 2 ;
+
+                        // calculate corresponding lzPosOrg
+                        calcPosOrg(lpCur, lzTstOrg, lzTstNew) ;
+                    } else {
+                      liCurCmp = -1;
+                    }
+                }
+
+                /* evaluate: keep the best solution */
+                if (liCurCmp > 0){
+                    if (lpBst == NULL)
+                        // first one, take it
+                        lpBst=lpCur ;
+                    else if (liCurCmp < 2 && liBstCmp > 4)
+                        // avoid using low-quality matches (liCurCmp < 2 == low quality)
+                        liCurCnt = -1 ;  //@breakpoint
+                    else if (liBstCmp < 2 && liCurCmp > 4)
+                        // avoid using low-quality matches (liBstCmp < 2 == low quality)
+                        lpBst=lpCur ;
+                    else if (lzTstNew + FZY < azBstNew)
+                        // new one is clearly better (nearer)
+                        lpBst=lpCur ;
+                    else if (lzTstNew <= azBstNew + FZY) {
+                        // maybe better (nearer): check in more detail
+                        if (lzTstNew - liCurCmp < azBstNew - liBstCmp) {
+                            // new one is longer
+                            lpBst=lpCur ;
+                        } else if (lzTstNew - liCurCmp == azBstNew - liBstCmp) {
+                            // If all else is equal, then rely on the hash counter
+                            if (liCurCnt < 0)
+                                liCurCnt = (lpCur->iiTyp < 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
+                            if (liCurCnt > liBstCnt)
+                                // higher hash-match counter = probably longer
+                                lpBst=lpCur ;
+                        }
+                    }
+
+                    if (lpBst==lpCur){
+                        azBstNew = lzTstNew ;
+                        azBstOrg = lzTstOrg ;
+                        liBstCmp = liCurCmp ;
+                        if (liCurCnt < 0)
+                            liBstCnt = (lpCur->iiTyp < 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
+                        else
+                            liBstCnt = liCurCnt ;
+                    }
+
+                    /* show table */
+                    #if debug
+                    if (JDebug::gbDbg[DBGMCH])
+                        fprintf(JDebug::stddbg,
+                            "Sol %5d %c [%c" P8zd ">" P8zd "<" P8zd "/" P8zd ":%4d:%4d]" P8zd ":%d\n",
+                            liCurCmp,
+                            (lpBst == lpCur)?'*':' ',
+                            (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
+                            lpCur->izOrg, lpCur->izDlt, lpCur->izNew, lpCur->izBeg,
+                            lpCur->iiCnt, lpCur->iiCmp,
+                            lzTstNew, liDst) ;
+                    #endif
+
                     // normal next
                     lpPrv = lpCur ;
                     lpCur = lpCur->ipNxt ;
-                }
-            } /* if else liCurCmp > 0 */
-        } /* for lpCur */
-    } /* for liIdx */
+
+                } else {
+                    /* show table */
+                    #if debug
+                    if (JDebug::gbDbg[DBGMCH])
+                        fprintf(JDebug::stddbg,
+                            "%s %5d %c [%c" P8zd ">" P8zd "<" P8zd "/" P8zd ":%4d:%4d]" P8zd ":%d\n",
+                            (lpCur->iiCnt < 2) ? "Cln" : "Mch",
+                            liCurCmp, ' ',
+                            (lpCur->iiTyp<0)?'G': (lpCur->iiTyp>0)?'C': ' ',
+                            lpCur->izOrg, lpCur->izDlt, lpCur->izNew, lpCur->izBeg,
+                            lpCur->iiCnt, lpCur->iiCmp,
+                            lzTstNew, liDst) ;
+                    #endif
+
+                    /* useless ? : clean it up to make room for other (better?) matches */
+                    //@if ((lpCur->iiCnt < 2) && lpCur->izNew < azRedNew) {
+                    if ((lpCur->izNew < azRedNew)) {
+                        // remove from list
+                        if (lpPrv == null)
+                            mpMch[liIdx] = lpCur->ipNxt ;
+                        else
+                            lpPrv->ipNxt = lpCur->ipNxt ;
+
+                        // add to free-list
+                        lpCur->ipNxt = mpMchFre ;
+                        mpMchFre = lpCur ;
+
+                        // next after remove
+                        if (lpPrv == null){
+                            lpCur = mpMch[liIdx] ;
+                        } else {
+                            lpCur = lpPrv->ipNxt ;
+                        }
+                    } else {
+                        // normal next
+                        lpPrv = lpCur ;
+                        lpCur = lpCur->ipNxt ;
+                    }
+                } /* if else liCurCmp > 0 */
+            } /* for lpCur */
+        } /* for liIdx */
+
+        #if debug
+        if (JDebug::gbDbg[DBGMCH])
+            fprintf(JDebug::stddbg, "Rlb official=%d, measured max=%d, avg=%d\n",
+                mpHsh->get_reliability(), liRlbMax, liRlbCnt>0?liRlbSum/liRlbCnt:-1);
+        #endif
+
+    } /* if mpMchBst */
 
     #if debug
     if (JDebug::gbDbg[DBGMCH]){
         if (lpBst == null){
             fprintf(JDebug::stddbg, "Match Failure at %" PRIzd "\n", azRedNew) ;
         } else if ((azRedNew != azBstNew)){
-            fprintf(JDebug::stddbg, "Suboptimal Match at %" PRIzd ": %" PRIzd "= %d\n",
+            fprintf(JDebug::stddbg, "Suboptimal Match at %" PRIzd ": from %" PRIzd ", length %d\n",
                     azRedNew, azBstNew, liBstCmp);
         } else if ((liBstCmp < EQLSZE)) {
-            fprintf(JDebug::stddbg, "Short Match at %" PRIzd ": %" PRIzd "= %d\n",
+            fprintf(JDebug::stddbg, "Short Match at %" PRIzd ": from %" PRIzd ", length %d\n",
                     azRedNew, azBstNew, liBstCmp);
         }
-
-        fprintf(JDebug::stddbg, "Rlb official=%d, measured max=%d, avg=%d\n",
-            mpHsh->get_reliability(), liRlbMax, liRlbCnt>0?liRlbSum/liRlbCnt:-1);
     }
     #endif
 
-    // Create a synthetic jump ahead if no match has been found
-    if (lpBst == null) {
-        azBstNew = azRedNew ;
-        azBstOrg = azRedOrg ;
-    }
-
-    return (mpMchFre != null || miMchFre > 0) ; // still place or not ?
+    return lpBst != null ;
 } /* getbest() */
 
 
@@ -654,9 +675,6 @@ int JMatchTable::check (
     int lcOrg=0 ;
     int lcNew=0 ;
     int liEql=0 ;
-    //int liMaxEql=0;
-    //int liMaxPos=0;
-    //int liLen ;
 
     #if debug
     if (JDebug::gbDbg[DBGCMP])
@@ -671,7 +689,7 @@ int JMatchTable::check (
             azPosOrg--;
             break;
         }
-        else if ((lcNew = mpFilNew->get(azPosNew ++, JFile::SoftAhead)) < 0){
+        else if ((lcNew = mpFilNew->get(azPosNew ++, aiSft)) < 0) { //@JFile::SoftAhead)) < 0){
             azPosNew--;
             azPosOrg--;
             break;
@@ -698,7 +716,7 @@ int JMatchTable::check (
                      (lcNew>=32 && lcNew <= 127)?lcNew:' ',(uchar)lcNew);
     #endif
 
-    if (liEql > EQLMIN){
+    if (liEql >= EQLMIN){
         azPosOrg -= liEql ;
         azPosNew -= liEql ;
         #if EQLBST > 0
@@ -708,7 +726,7 @@ int JMatchTable::check (
             return  EQLSZE + EQLBST / 2 ;
         else
         #endif // EQLBST
-            return  liEql ;
+        return  liEql ;
     } else if (lcOrg == EOB || lcNew == EOB){
         return -aiLen  ; // EOB reached
     } else {

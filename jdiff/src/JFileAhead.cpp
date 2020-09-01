@@ -136,11 +136,6 @@ int JFileAhead::get (
     if ((miRedSze > 0) && (azPos == mzPosRed)) {
         mzPosRed++ ;
         miRedSze--;
-        #if debug
-//@        if (JDebug::gbDbg[DBGRED])
-//          fprintf(JDebug::stddbg, "JFileAhead(%s," P8zd ",%d)->%c=%2x (mem %p).\n",
-//             msJid, azPos, aiSft, *mpRed, *mpRed, mpRed);
-        #endif
         return *mpRed++;
     } else {
         return get_frombuffer(azPos, aiSft);
@@ -184,12 +179,21 @@ int JFileAhead::get_frombuffer (
             }
 
             // detect buffer contents failure
-            jchar lcTst[lzLen] ;
+            static jchar lcTst[1024*1024] ;
             int liDne ;
-            int liCmp;
+            int liCmp ;
+            int liLen ;
             jseek(azPos) ;
-            liDne = jread(lcTst, lzLen) ;
-            liCmp = memcmp(lpDta, lcTst, lzLen) ;
+            if (lzLen > sizeof(lcTst))
+                liLen = sizeof(lcTst);
+            else
+                liLen = lzLen ;
+            liDne = jread(lcTst, liLen) ;
+            if (liDne != liLen){
+                fprintf(JDebug::stddbg, "JFileAhead(%s," P8zd ",%d)->%c=%2x (mem %p): len-error !\n",
+                   msJid, azPos, aiSft, *lpDta, *lpDta, lpDta );
+            }
+            liCmp = memcmp(lpDta, lcTst, liLen) ;
             if (liCmp != 0) {
                 fprintf(JDebug::stddbg, "JFileAhead(%s," P8zd ",%d)->%c=%2x (mem %p): buf-error !\n",
                    msJid, azPos, aiSft, *lpDta, *lpDta, lpDta );
@@ -281,12 +285,13 @@ jchar * JFileAhead::getbuf(const off_t azPos, off_t &azLen, const eAhead aiSft) 
         }
     }
 
-    #if debug
+    //@#if debug
     if (azPos >= mzPosInp || azPos < mzPosInp - miBufUsd) {
-        fprintf(JDebug::stddbg, "JFileAhead::getbuf(%s," P8zd ",%d)->%2x (sto %p) failed !\n",
-                msJid, azPos, aiSft, *mpInp, mpInp);
+        fprintf(JDebug::stddbg, "JFileAhead::getbuf(%s," P8zd "," P8zd ",%d)->%2x (sto %p) failed !\n",
+                msJid, azPos, azLen, aiSft, *mpInp, mpInp);
+        exit(- EXI_SEK);
     }
-    #endif
+    //#endif
 
     return lpDta ;
 }
@@ -308,239 +313,255 @@ JFileAhead::eBufDne JFileAhead::get_fromfile (
     const off_t azPos,      /**< position to read from                */
     const eAhead aiSft      /**< 0=read, 1=hard ahead, 2=soft ahead   */
 ){
-        eBufOpr liSek ;         /**< buffer logic operation type    */
-        eBufDne liRet=Added;    /**< result type                    */
-        int liTdo ;             /**< number of bytes to read        */
-        int liDne ;             /**< number of bytes read           */
-        jchar *lpInp ;          /**< place in buffer to read to     */
-        off_t lzPos ;           /**< position to seek               */
+    eBufOpr liSek ;         /**< buffer logic operation type    */
+    eBufDne liRet=Added;    /**< result type                    */
+    int liTdo ;             /**< number of bytes to read        */
+    int liDne ;             /**< number of bytes read           */
+    jchar *lpInp ;          /**< place in buffer to read to     */
+    off_t lzPos ;           /**< position to seek               */
 
-        /* Preparation: Check what should be done and set liSek accordingly */
-        if (azPos < mzPosInp - miBufUsd ) {
-            // Reading before the start of the buffer:
-            // - either cancel the whole buffer: easiest, but we loose all data in the buffer
-            // - either scroll back the buffer: harder, but we may not loose all data in the buffer
-            if (azPos + miBlkSze < mzPosInp - miBufUsd) {
-                // scrolling back more than the blocksize is not (yet) possible: just reset
-                liSek = Reset ;
-            } else {
-                // no more than one block: scroll back
-                liSek = Scrollback;
-            }
-        } else if (azPos >= mzPosInp + miBlkSze ) {
-            // Reading one block will not be enough: seek and reset
+    /* Preparation: Check what should be done and set liSek accordingly */
+    if (azPos < mzPosInp - miBufUsd ) {
+        // Reading before the start of the buffer:
+        // - either cancel the whole buffer: easiest, but we loose all data in the buffer
+        // - either scroll back the buffer: harder, but we may not loose all data in the buffer
+        if (azPos + miBlkSze < mzPosInp - miBufUsd) {
+            // scrolling back more than the blocksize is not (yet) possible: just reset
             liSek = Reset ;
         } else {
-            // Reading less than one additional block: just append to the buffer
-            liSek = Append ;
+            // no more than one block: scroll back
+            liSek = Scrollback;
         }
+    } else if (azPos >= mzPosInp + miBlkSze ) {
+        // Reading one block will not be enough: seek and reset
+        liSek = Reset ;
+    } else {
+        // Reading less than one additional block: just append to the buffer
+        liSek = Append ;
+    }
 
-        /* Soft ahead : seek or overreading the buffer is not allowed */
-        if (aiSft == SoftAhead && ((liSek != Append) || (azPos >= mzPosBse + mlBufSze - miBlkSze))) {
-            #if debug
-            if (JDebug::gbDbg[DBGRED])
-                fprintf(JDebug::stddbg, "get_fromfile(%p," P8zd ",%d)->EOB.\n",
-                        msJid, azPos, aiSft);
-            #endif
+    /* Soft ahead : seek or overreading the buffer is not allowed */
+    if (aiSft == SoftAhead && ((liSek != Append) || (azPos > mzPosBse + mlBufSze - miBlkSze))) {
+        #if debug
+        if (JDebug::gbDbg[DBGRED])
+            fprintf(JDebug::stddbg, "get_fromfile(%s," P8zd ",%d)->EOB.\n",
+                    msJid, azPos, aiSft);
+        #endif
+        return EndOfBuffer ;
+    }
+
+    /* Sequential file : seek is not allowed */
+    if (mbSeq && liSek != Append) {
+        switch (aiSft){
+        case Test:
+        case Read:
+            // should not occur, quit with error code
+            return SeekError ;
+        case SoftAhead:
+            // should not occur due to preceding logic, so issue a warning message
+            fprintf(stderr, "Warning: Buffer logic failure: EOB on SoftAhead at %" PRIzd")!", azPos);
+            return EndOfBuffer ;
+        case HardAhead:
+            // should not occur due to algorithm logic, so issue a warning message
+            fprintf(stderr, "Warning: Buffer logic failure: EOB on HardAhead at %" PRIzd")!", azPos);
             return EndOfBuffer ;
         }
+    }
 
-        /* Sequential file : seek is not allowed */
-        if (mbSeq && liSek != Append) {
-            if (aiSft == Read)
-                return SeekError ;
-            else
-                return EndOfBuffer ;
+    /* Preparation: Determine the reading position lzPos, lpInp and liTdo */
+    switch (liSek) {
+    case (Scrollback):
+        /* Scroll back: first make room in buffer */
+        if (miBufUsd + miBlkSze > mlBufSze) {
+            // number of bytes to remove in order to have room for miBlkSze
+            liTdo = miBufUsd + miBlkSze - mlBufSze ;
+            miBufUsd -= liTdo ;
+            mzPosInp -= liTdo ;
+            mpInp -= liTdo ;
+            if (mpInp < mpBuf)
+                mpInp += mlBufSze ;
         }
 
-        /* Preparation: Determine the reading position lzPos, lpInp and liTdo */
-        switch (liSek) {
-        case (Append):
-            /* Read new block of data: how many bytes can we read ? */
-            liTdo = mpMax - mpInp ;             // Calculate max bytes we can read
-            if (liTdo > miBlkSze)
-                liTdo = miBlkSze ;              // Reduce to blocksize
-            if (mzPosInp + liTdo > mzPosEof)
-                liTdo = mzPosEof - mzPosInp ;   // Don't read more than eof
-            lpInp = mpInp ;                     // Set new physical read position
-            lzPos = mzPosInp ;                  // Set seek position
-            break ;
-
-        case (Reset):
-            /* Set position: perform an aligned read on miBlksze */
-            lzPos = (azPos / miBlkSze) * miBlkSze ;
-            lpInp = mpBuf;
-            if (lzPos + miBlkSze > mzPosEof)
-                liTdo = mzPosEof - mzPosInp ;   // Don't read more than eof
-            else
-                liTdo = miBlkSze ;
-
-            /* Reset buffer */
-            mpInp = mpBuf;
-            mzPosInp = lzPos;
-            mzPosBse = lzPos;
-            miBufUsd = 0 ;
-
-            break ;
-
-        case (Scrollback):
-            /* Scroll back: first make room in buffer */
-            if (miBufUsd + miBlkSze > mlBufSze) {
-                // number of bytes to remove in order to have room for miBlkSze
-                liTdo = miBufUsd + miBlkSze - mlBufSze ;
-                miBufUsd -= liTdo ;
-                mzPosInp -= liTdo ;
-                mpInp -= liTdo ;
-                if (mpInp < mpBuf)
-                    mpInp += mlBufSze ;
-            }
-
-            /* scroll back on buffer logic
-            *  case 1: [^***********$-----------Tdo]
-            *  case 2: [************$----Tdo^******]
-            *  case 3: [Td^*********$--------------]
-            *  case 4: [--Tdo^*****$---------------]
-            *  $   = end of data : mpInp/mzPosInp
-            *  ^   = start of data : mpInp / mzPosInp - miBufUsd
-            *  *   = data
-            *  -   = empty or freed space
-            *  Tdo = scrollback
+        /* scroll back on buffer logic
+        *  case 1: [^***********$-----------Tdo]
+        *  case 2: [************$----Tdo^******]
+        *  case 3: [Td^*********$--------------]
+        *  case 4: [--Tdo^*****$---------------]
+        *  $   = end of data : mpInp/mzPosInp
+        *  ^   = start of data : mpInp / mzPosInp - miBufUsd
+        *  *   = data
+        *  -   = empty or freed space
+        *  Tdo = scrollback
+        */
+        lzPos = mzPosInp - miBufUsd ;   // start of data
+        liTdo = miBlkSze ;              // number of bytes to scroll back
+        if ( lzPos < liTdo ) {
+            liTdo = lzPos ;             // to not scroll back before zero
+        }
+        lpInp = mpInp - miBufUsd ;      // start of data
+        if (lpInp == mpBuf) {
+            /* Case 1 : current start of data is at the start of the buffer,
+            *  so we have to read at the end of the buffer (create a cycle).
             */
-            lzPos = mzPosInp - miBufUsd ;   // start of data
-            liTdo = miBlkSze ;              // number of bytes to scroll back
-            if ( lzPos < liTdo ) {
-                liTdo = lzPos ;             // to not scroll back before zero
-            }
-            lpInp = mpInp - miBufUsd ;      // start of data
-            if (lpInp == mpBuf) {
-                /* Case 1 : current start of data is at the start of the buffer,
-                *  so we have to read at the end of the buffer (create a cycle).
-                */
-                lpInp = mpMax - liTdo ;
-                liRet = Cycled ;
-            } else if (lpInp > mpBuf) {
-                /* Case 3 or 4 (untested !!) */
-                if (lpInp - liTdo >= mpBuf) {
-                    /* Case 4 : there's room at the start of the buffer, use it */
-                    lpInp -= liTdo ;
-                } else {
-                    /* Case 3 : reduce liTdo                                */
-                    /* By consequence, maybe azPos will not be read.        */
-                    /* In such a case, a second getfromfile is needed !     */
-                    /* This can only happen when buffer is unaligned, i.e.  */
-                    /* mlBufSze is not a multiple of miBlkSze.              */
-                    liTdo = lpInp - mpBuf ;
-                    lpInp = mpBuf ;
-                    if (lzPos - liTdo > azPos)
-                        liRet = Partial ;     // we cannot scroll back to azPos in one read !
-                }
+            lpInp = mpMax - liTdo ;
+            liRet = Cycled ;
+        } else if (lpInp > mpBuf) {
+            /* Case 3 or 4 (untested !!) */
+            if (lpInp - liTdo >= mpBuf) {
+                /* Case 4 : there's room at the start of the buffer, use it */
+                lpInp -= liTdo ;
             } else {
-                /* case 2 : use the space before the start of data */
-                lpInp += mlBufSze - liTdo ;
-                liRet = Cycled ;
+                /* Case 3 : reduce liTdo                                */
+                /* By consequence, maybe azPos will not be read.        */
+                /* In such a case, a second getfromfile is needed !     */
+                /* This can only happen when buffer is unaligned, i.e.  */
+                /* mlBufSze is not a multiple of miBlkSze.              */
+                liTdo = lpInp - mpBuf ;
+                lpInp = mpBuf ;
+                if (lzPos - liTdo > azPos)
+                    liRet = Partial ;     // we cannot scroll back to azPos in one read !
             }
-            miBufUsd += liTdo ;
-            lzPos -= liTdo ;
-
-            break ;
-
-        } /* switch liSek */
-
-        /* Execute: Perform seek */
-        if (liSek != Append) {
-            #if debug
-            if (JDebug::gbDbg[DBGBUF]) fprintf(JDebug::stddbg, "getfromfile: Seek %" PRIzd ".\n", azPos);
-            #endif
-
-            if (jseek(lzPos) != EXI_OK) {
-                return SeekError ;
-            }
-            mlFabSek++ ;
-        } /* if liSek */
-
-        /* Execute: Read a block of data (miBlkSze) */
-        liDne = jread(lpInp, liTdo) ;
-        if (liDne < liTdo) {
-            #if debug
-            if (JDebug::gbDbg[DBGRED])
-                fprintf(JDebug::stddbg, "getfromfile(%p," P8zd ",%d)->EOF.\n",
-                        msJid, azPos, aiSft);
-            #endif
-
-            mzPosEof = lzPos + (off_t) liDne ;
-            if (liDne == 0 || azPos >= mzPosEof)
-                return EndOfFile ;
+        } else {
+            /* case 2 : use the space before the start of data */
+            lpInp += mlBufSze - liTdo ;
+            liRet = Cycled ;
         }
-        #if debug
-        //if (JDebug::gbDbg[DBGRED])
-        //    fprintf(JDebug::stddbg, "JFileAhead::get_fromfile(%s," P8zd ",%d)->%c=%2x (sto %p).\n",
-        //            msJid, azPos, aiSft, *mpInp,*mpInp, mpInp);
-        #endif
+        miBufUsd += liTdo ;
+        lzPos -= liTdo ;
 
-        /* Update the buffer variables */
-        /* In principle, all buffer logic has been done during the preparation phase    */
-        /* except if the read hit an EOF. Therefore, the length of the buffer is only   */
-        /* calculated here: mpInp, miRedSze, azLen, miBufUsd, and mpInp)                */
-        switch (liSek) {
-        case (Scrollback):
-            /* Handle scroll-back */
-            if (liDne < liTdo) {
-                /* repair buffer when EOF has been hit */
-                // 08-2020 How can we hit EOF when scrolling back ?
-                // Do we ever come here ???
-                mpInp = lpInp + liDne;
-                if ( mpInp >= mpMax) {
-                    mpInp -= mlBufSze ;
-                }
+        break ;
 
-                /* set some safe values */
-                mzPosInp = lzPos + liDne ;
-                miBufUsd = liDne;
-                mzPosBse = mzPosInp ;
-                liRet = Partial ;
-            } else {
-                /* Restore input position (not needed after EOF) */
-                mlFabSek++;
-                jseek(mzPosInp);
-                //@! handle seek errors
-            }
-            break ;
+    case (Reset):
+        /* Set position: perform an aligned read on miBlksze */
+        lzPos = (azPos / miBlkSze) * miBlkSze ;
+        lpInp = mpBuf;
+        if (lzPos + miBlkSze > mzPosEof)
+            liTdo = mzPosEof - lzPos ;   // Don't read more than eof
+        else
+            liTdo = miBlkSze ;
 
-        default:
-            /* Advance input position */
-            mzPosInp += liDne ;
-            mpInp    += liDne ;
+        break ;
 
-            // Cycle buffer
-            if ( mpInp == mpMax ) {
+    case (Append):
+        /* Read new block of data: how many bytes can we read ? */
+//@083b        liTdo = mpMax - mpInp ;             // Calculate max bytes we can read
+//        if (liTdo > miBlkSze)
+//            liTdo = miBlkSze ;              // Reduce to blocksize
+        liTdo = miBlkSze ;
+        if (mpInp + liTdo > mpMax){
+            liTdo = mpMax - mpInp ;
+            if (liTdo == 0){
+                // Cycle buffer
                 mpInp = mpBuf ;
-                liRet = Cycled ;
-            } else if ( mpInp > mpMax ) {
-                fprintf(stderr, "Buffer out of bounds on position %" PRIzd")!", azPos);
-                exit(- EXI_SEK);
+                liTdo = miBlkSze ; // Buffer size cannot be lower than blocksize
             }
-            if ( miBufUsd < mlBufSze ) miBufUsd += liDne ;
-            if ( miBufUsd > mlBufSze ) {
-                // Quite uncommon, but not an error.
-                // Can happen for example after scrolling back (case 1) less than miBlkSze
-                miBufUsd = mlBufSze ;
-                mzPosBse = mzPosInp - mlBufSze ;
-            }
-            miRedSze += liDne ;
-            if (mpRed == mpMax)
-                mpRed = mpBuf ;
-            break;
-        } /* switch aiSek */
-
-        #if debug
-        if (azPos >= mzPosInp || azPos < mzPosInp - miBufUsd ){
-            fprintf(JDebug::stddbg, "JFileAhead(%s," P8zd ",%d)->%2x (sto %p) failed !\n",
-                    msJid, azPos, aiSft, *mpInp, mpInp);
         }
+        if (mzPosInp + liTdo > mzPosEof)
+            liTdo = mzPosEof - mzPosInp ;   // Don't read more than eof
+        lpInp = mpInp ;                     // Set new physical read position
+        lzPos = mzPosInp ;                  // Set seek position
+        break ;
+
+    } /* switch liSek */
+
+    /* Execute: Perform seek */
+    if (liSek != Append) {
+        #if debug
+        if (JDebug::gbDbg[DBGBUF]) fprintf(JDebug::stddbg, "getfromfile: Seek %" PRIzd ".\n", azPos);
         #endif
 
-        /* Return about what we have done */
-        return liRet ;
+        if (jseek(lzPos) != EXI_OK) {
+            return SeekError ;
+        }
+        mlFabSek++ ;
+    } /* if liSek */
+
+    /* Execute: Read a block of data (miBlkSze) */
+    liDne = jread(lpInp, liTdo) ;
+    if (liDne < liTdo) {
+        #if debug
+        if (JDebug::gbDbg[DBGRED])
+            fprintf(JDebug::stddbg, "getfromfile(%p," P8zd ",%d)->EOF.\n",
+                    msJid, azPos, aiSft);
+        #endif
+
+        mzPosEof = lzPos + (off_t) liDne ;
+        if (liDne == 0 || azPos >= mzPosEof)
+            return EndOfFile ;      //@ cannot return here, first perform the buffer logic !!!
+    }
+    #if debug
+    //if (JDebug::gbDbg[DBGRED])
+    //    fprintf(JDebug::stddbg, "JFileAhead::get_fromfile(%s," P8zd ",%d)->%c=%2x (sto %p).\n",
+    //            msJid, azPos, aiSft, *mpInp,*mpInp, mpInp);
+    #endif
+
+    /* Update the buffer variables */
+    /* In principle, all buffer logic has been done during the preparation phase    */
+    /* except if the read hit an EOF. Therefore, the length of the buffer is only   */
+    /* calculated here: mpInp, miRedSze, azLen, miBufUsd, and mpInp)                */
+    switch (liSek) {
+    case (Reset):
+        /* Reset buffer */
+        mpInp    = lpInp + liDne ;
+        mzPosInp = lzPos + liDne;
+        mzPosBse = lzPos;
+        miBufUsd = liDne ;
+        break ;
+
+    case (Append):
+        /* Advance input position */
+        mzPosInp += liDne ;
+        mpInp    += liDne ;
+        miBufUsd += liDne ;
+        if ( miBufUsd > mlBufSze ) {
+            miBufUsd = mlBufSze ;
+            //@mzPosBse = mzPosInp - mlBufSze ;
+        }
+
+        // Cycle buffer         //@ always do this above to simplify return code
+        if ( mpInp == mpMax ) {
+            mpInp = mpBuf ;
+            liRet = Cycled ;
+        } else if ( mpInp > mpMax ) {
+            fprintf(stderr, "Buffer out of bounds on position %" PRIzd")!", azPos);
+            exit(- EXI_SEK);
+        }
+
+        /* Handle partial reads (when blocksize and buffer size are unaligned) */
+        if (azPos >= mzPosInp){
+            liRet = Partial ;
+        }
+
+        break;
+
+    case (Scrollback):
+        /* Handle scroll-back */
+        if (liDne < liTdo) {
+            /* repair buffer when EOF has been hit */
+            // 08-2020 How can we hit EOF when scrolling back ?
+            // This can only happen when file gets truncated, which is quite improbable !
+            mpInp = lpInp + liDne;
+            if ( mpInp >= mpMax) {
+                mpInp -= mlBufSze ;
+            }
+
+            /* set some safe values */
+            mzPosInp = lzPos + liDne ;
+            miBufUsd = liDne;
+            mzPosBse = lzPos ;
+            liRet = Partial ; //@ not always correct !
+        } else {
+            /* Restore input position (not needed after EOF) */
+            mlFabSek++;
+            if (jseek(mzPosInp) != EXI_OK) {
+                return SeekError;
+            }
+        }
+        break ;
+    } /* switch aiSek */
+
+    /* Return about what we have done */
+    return liRet ;
 } /* get_fromfile */
 
 } /* namespace JojoDiff */

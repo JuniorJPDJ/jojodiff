@@ -139,7 +139,7 @@ protected:
     *
     * @return >= 0: EOF position, EXI_SEK in case of error
     */
-    virtual off_t jeofpos() = 0; //@ { return EXI_SEK ; } ;
+    virtual off_t jeofpos() = 0;
 
 protected:
     char const * const msJid ;      /**< JFile-id           */

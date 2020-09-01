@@ -48,7 +48,7 @@ bool JOutAsc::put (
 
   switch (aiOpr) {
     case (MOD) :
-      fprintf(mpFilOut, "MOD %3o %3o %c-%c\n", aiOrg, aiNew,
+      fprintf(mpFilOut, "MOD %02x %02x %c-%c\n", aiOrg, aiNew,
         ((aiOrg >= 32 && aiOrg <= 127)?(char) aiOrg:' '),
         ((aiNew >= 32 && aiNew <= 127)?(char) aiNew:' '));
 
@@ -61,7 +61,7 @@ bool JOutAsc::put (
       break;
 
     case (INS) :
-      fprintf(mpFilOut, "INS     %3o  -%c\n", aiNew,
+      fprintf(mpFilOut, "INS     %02x  -%c\n", aiNew,
         ((aiNew >= 32 && aiNew <= 127)?(char) aiNew:' '));
 
       if (liOprCur != aiOpr) {
@@ -89,7 +89,7 @@ bool JOutAsc::put (
       break;
 
     case (EQL) :
-      fprintf(mpFilOut, "EQL %3o %3o %c-%c\n", aiOrg, aiNew,
+      fprintf(mpFilOut, "EQL %02x %02x %c-%c\n", aiOrg, aiNew,
         ((aiOrg >= 32 && aiOrg <= 127)?(char) aiOrg:' '),
         ((aiNew >= 32 && aiNew <= 127)?(char) aiNew:' '));
 

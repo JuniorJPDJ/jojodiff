@@ -39,12 +39,6 @@ void JFile::chkSeq(){
     if (! mbSeq) {
         mzPosEof = jeofpos();
         if (mzPosEof < 0) {
-            if (strcmp(msJid, "Org") == 0)
-                fprintf(JDebug::stddbg, "\n%s\n", "Warning: Source file is a sequential file, assuming -p.");
-            else if (strcmp(msJid, "New") == 0)
-                fprintf(JDebug::stddbg, "\n%s\n", "Warning: Destination file is a sequential file, assuming -q.");
-            else
-                fprintf(JDebug::stddbg, "\nWarning: File %s is a sequential file, switching to sequential mode.\n", msJid);
             mbSeq = true ;
         }
     }

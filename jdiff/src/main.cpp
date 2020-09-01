@@ -133,6 +133,8 @@
  * joheirba  v0.8.3s   Aug 2020 Option -s for stdio instead of istream
  * joheirba  v0.8.3t   Aug 2020 Integration of jpatct with JFile.getbuf
  *                              Refactoring JFileIStreamAhead
+ * joheirba  v0.8.3z   Aug 2020 Review matchtable logic for non-compared matched
+ * joheirba  v0.8.4b   Sep 2020 Review hash-reinitialization for incremental scanning
  *
  *******************************************************************************/
 
@@ -144,7 +146,7 @@
   * 07-2020  083r   Allow stdin as src/dst file
   * 07-2020  083?   Check hashtable dist with -p/-q/-ff
   * 07-2020         JDiff::ufFndAhd count existing matches and new colliding matches
-  * 07-2020         Align buffered reads on block boundaries ?
+  * 07-2020  083x   Align buffered reads on block boundaries ?
   * 07-2020  083l   Assure that lookahead search advances at least half a buffer
   * 07-2020  083?   ufFndAhd: reduce liMax to azAhdMax ?
   * 08-2020         JMatchTable::get : improve performance by prechecking
@@ -160,18 +162,21 @@
   * 08-2020  083r   convert Mb/kb upon instantiation
   * 08-2020  083o   Integrate JMatchTable add, get and cleanup
   * 08-2020         Remove JFileStreamAhead.miRed
-  * 08-2020  drop   Remove potential indefinite loop in uf_get_outofbuf ?
-  * 08-2020  083r   Make EQLMAX a parameter
+  * 08-2020  083x   Remove potential indefinite loop in uf_get_outofbuf ?
+  * 08-2020         Make EQLMAX a parameter
   * 08-2020  fail   Reduce garbage collect in ufFnhAhd
   * 08-2020  fail   Reduce incremental garbage collect in ufMchBst for future matches
   * 08-2020  083q   Adaptive liDst in ufMchBst based on azBstNew-azRedNew+EQLMAX
   * 08-2020  083q   For maximum best matches, use iiCnt
   * 08-2020  083q   Improve hash function: hash2
-  * 08-2020         Direct reading in buffer space for better performance ?
+  * 08-2020  083s   Direct reading in buffer space for better performance ?
+  * 08-2020  083z   Check for IO errors in JMatchTable add and get
+  * 09-2020         Refactor scrollback, align with blocksize
+  * 09-2020         Performance: Soft ahead in check once EQLSZE bytes are found ?
+  * 09-2020         Remove liMax logic from ufFndAhd ?
+  * 09-2020         Incremental source scanning: separate function, full buffer with getbuf
+  * 09-2020         Optimize Cycled logic in buffer logic (JFileAhead)
   *
-  * CLEANUP
-  * - //@
-  * - FY=2 ?
   ******************************************************************************/
 /*
  * Includes
@@ -260,14 +265,14 @@ int main(int aiArgCnt, char *acArg[])
     int liMchMin = 2 ;            /**< Minimum entries in matching table.               */
     int liHshMbt = 32 ;           /**< Hashtable size in MB (* 1024 * 1024)             */
     long llBufSze = 2 ;           /**< Default file-buffers size in MB                  */
-    int liBlkSze = 8192 ;         /**< Default block size (in bytes)                    */
+    int liBlkSze = 32*1024 ;      /**< Default block size (in bytes)                    */
     int liAhdMax = 0;             /**< Lookahead range (0=same as llBufSze)             */
     int liHlp=0;                  /**< -h/--help flag: 0=no, 1=-h, 2=-hh, 3=error       */
     bool lbStdio=false;           /**< use stdio                                        */
-    bool liFun=0;                 /**< function: 0=jdiff, 1=jpatch, 2=both (test)       */
     int liTst=0;                  /**< test to execute : 0 = normal, 1 etc... see JTest */
     bool lbSeqOrg = false;        /**< Sequential source file ?                         */
     bool lbSeqNew = false;        /**< Sequential destination file ?                    */
+    enum {Diff, Patch, Test} liFun = Diff;  /**< function to execute                    */
 
     JDebug::stddbg = stderr ;     /**< Debug and informational (verbose) output         */
 
@@ -285,9 +290,9 @@ int main(int aiArgCnt, char *acArg[])
     if (lcCmdTst != null)
         lcCmd = lcCmdTst + 1;
     if (strncasecmp(lcCmd, "jpatch", 6) == 0)
-        liFun=1 ;
+        liFun=Patch ;
     else if (strncasecmp(lcCmd, "jtst", 4) == 0)
-        liFun=2;
+        liFun=Test;
 
     /* parse option-switches */
     while((lcOptSht = getopt_long(aiArgCnt, acArg, gcOptSht, gsOptLng, &liOptLng))!=EOF) {
@@ -301,19 +306,19 @@ int main(int aiArgCnt, char *acArg[])
             liMchMax *= 2 ;           // increase maximum number of matches to search
             liHshMbt *= 4 ;           // Increase index table size
             break;
-        case 'f': // faster
+        case 'f': // faster (or rather: lazier)
             if (lbCmpAll) {
                 lbCmpAll = false ;      // No compares out-of-buffer (only verify hashtable matches when data is available in memory buffers)
-                llBufSze *= 4 ;         // increase buffer size to have more lookahead indexing
+                llBufSze *= 16 ;        // increase buffer size to have more lookahead indexing
                 lbSrcBkt = true ;
                 liSrcScn = 1  ;
                 liMchMin *= 2 ;
                 liMchMax /= 2 ;
             } else {
-                // even faster
+                // even faster (lazier)
                 liSrcScn = 0 ;          // No indexing scan, indexing is limited ookahead search
-                liMchMin /= 2 ;
-                liMchMax /= 2 ;    // Increase buffered lookahead to its maximum
+                liMchMin /= 2 ;         // Reduce lookahead
+                liMchMax /= 2 ;
             }
             liHshMbt /= 2 ;             // Reduce index table by 2
             break;
@@ -322,12 +327,10 @@ int main(int aiArgCnt, char *acArg[])
             lbCmpAll = false ;            // only compare data within the buffer
             lbSrcBkt = false ;            // only backtrack on source file in buffer
             liSrcScn = 0;                 // no pre-scan indexing
-            //liMchMin=0;                 // do not search out of buffer
             break;
         case 'q': // sequential destination file
             lbSeqNew = true ;
             liMchMin = 0;                 // only search within the buffer
-            //@lbCmpAll=false ;            // only compare data within the buffer
             break;
 
         case 'c': // verbose-stdout
@@ -337,7 +340,7 @@ int main(int aiArgCnt, char *acArg[])
             liHlp++;
             break;
         case 'j':   // jdiff
-            liFun = 0 ;
+            liFun = Diff ;
             break ;
         case 'l': // "list-details",      no_argument
             liOutTyp = 1 ;
@@ -349,14 +352,14 @@ int main(int aiArgCnt, char *acArg[])
             lbStdio=! lbStdio ; /* switch */
             break;
         case 't':   // test: patch and unpatch in one go
-            liFun = 2 ;
+            liFun = Test ;
             if (optarg)
                 liTst = atoi(optarg);    // test number
             else
                 liTst=0;
             break ;
         case 'u':   // unpatch
-            liFun = 1 ;
+            liFun = Patch ;
             break ;
         case 'v': // "verbose",           no_argument
             liVerbse++;
@@ -367,7 +370,10 @@ int main(int aiArgCnt, char *acArg[])
             break;
         case 'i': // index-size
             liHshMbt = atoi(optarg) ;
-            while (liHshMbt > 1024) liHshMbt /= 1024 ;
+            if (liHshMbt <= 0){
+                liHshMbt = 1 ;
+                fprintf(JDebug::stddbg, "Warning: invalid --index-size/-i specified, set to 1.\n");
+            }
             break;
         case 'k': // "block-size"
             liBlkSze = atoi(optarg) ;
@@ -460,7 +466,7 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "the first by \"undiffing\". JDiff aims for the smallest possible diff file.\n\n"),
 
         fprintf(JDebug::stddbg, "Usage: jdiff -j [options] <source file> <destination file> [<diff file>]\n") ;
-        fprintf(JDebug::stddbg, "  and: jdiff -u [options] <source file> <diff file> [<destination file>]\n\n") ;
+        fprintf(JDebug::stddbg, "   or: jdiff -u [options] <source file> <diff file> [<destination file>]\n\n") ;
         fprintf(JDebug::stddbg, "  -j                       JDiff:  create a difference file.\n");
         fprintf(JDebug::stddbg, "  -u                       Undiff: undiff a difference file.\n\n");
 
@@ -475,7 +481,7 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "  -b --better -bb...       Better: more memory, work harder.\n");
         fprintf(JDebug::stddbg, "  -f --lazy                Lazy : no unbuffered searching (often slower).\n");
         fprintf(JDebug::stddbg, "  -ff                      Lazier : no full index table.\n");
-        fprintf(JDebug::stddbg, "  -p --sequential-source   Sequential source (discouraged) (- for stdin).\n");
+        fprintf(JDebug::stddbg, "  -p --sequential-source   Sequential source (to avoid) (- for stdin).\n");
         fprintf(JDebug::stddbg, "  -q --sequential-dest     Sequential destination (- for stdin).\n");
         #ifndef JDIFF_STDIO_ONLY
         fprintf(JDebug::stddbg, "  -s --stdio               Use stdio files (for testing).\n");
@@ -488,60 +494,47 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "  -n --search-min <count>  Minimum number of matches to search (default %d).\n", liMchMin);
         fprintf(JDebug::stddbg, "  -x --search-max <count>  Maximum number of matches to search (default %d).\n\n", liMchMax);
 
-        //@fprintf(JDebug::stddbg, "Principles:\n");
-        //@fprintf(JDebug::stddbg, "  JDIFF searches equal regions between two binary files using a heuristic\n");
-        //@fprintf(JDebug::stddbg, "  hash-index algorithm to find a smallest-as-possible set of differences.\n");
-
-        fprintf(JDebug::stddbg, "Make diff-file:  jdiff -j old-file new-file diff-file.jdf\n");
+        fprintf(JDebug::stddbg, "Make  diff-file: jdiff -j old-file new-file diff-file.jdf\n");
         fprintf(JDebug::stddbg, "Apply diff-file: jdiff -u old-file diff-file.jdf recreated-new-file\n\n");
 
         fprintf(JDebug::stddbg, "Hint:\n");
         fprintf(JDebug::stddbg, "  Do not use jdiff on compressed files. Rather use jdiff first and compress\n");
-        //@fprintf(JDebug::stddbg, "  afterwards, e.g.: jdiff -j old new | 7z a dif.jdf.7z -si (also with gzip)\n");
         fprintf(JDebug::stddbg, "  afterwards, e.g.: jdiff -j old new | gzip >dif.jdf.gz (or 7z with -si)\n");
 
         if ((liHlp>1) || (liVerbse>2)) {
             fprintf(JDebug::stddbg, "\nNotes:\n");
             fprintf(JDebug::stddbg, " - Options -b, -bb, -f, -ff, ... should be used before other options.\n");
-            fprintf(JDebug::stddbg, " - Accuracy may be improved by increasing the index table size (-i) or.\n");
-            fprintf(JDebug::stddbg, "   or the buffer size (-m), see below, but usually at a slower speed.\n");
-            fprintf(JDebug::stddbg, " - Index table size is always lowered to the nearest prime.\n");
-            fprintf(JDebug::stddbg, " - Source and destination files must be random access files.\n");
+            fprintf(JDebug::stddbg, " - Accuracy may be improved by increasing the index table size (-i) or\n");
+            fprintf(JDebug::stddbg, "   the buffer size (-m), see below.\n");
+            fprintf(JDebug::stddbg, " - The index table size is always lowered to the nearest lower prime number.\n");
             fprintf(JDebug::stddbg, " - Output is sent to standard output if no output file is specified.\n");
             // ruler:                0---------1---------2---------3---------4---------5---------6---------7---------8
-            fprintf(JDebug::stddbg, "\nAdditional help: rationale behind the -i, -m, -n -x, -b, -f and other options.\n");
+            fprintf(JDebug::stddbg, "\nAdditional explications:\n");
             fprintf(JDebug::stddbg, "  JDiff starts by comparing source and destination files.\n");
             fprintf(JDebug::stddbg, "  \n");
             fprintf(JDebug::stddbg, "  When a difference is found, JDiff will first index the source file.\n");
-            fprintf(JDebug::stddbg, "  Under normal operation, the full source file is indexed, but this can be\n");
-            fprintf(JDebug::stddbg, "  disabled with the -ff option (faster, but a big loss of accuracy). Indexing\n");
-            fprintf(JDebug::stddbg, "  will then be done during searching (so only small differences will be found).\n");
+            fprintf(JDebug::stddbg, "  Normally, the full source file is indexed, but this can be disabled by the\n");
+            fprintf(JDebug::stddbg, "  -ff or -p options, in which case only the buffered part of the source file\n");
+            fprintf(JDebug::stddbg, "  will be indexed. This may be faster, but at a loss of accuracy.\n");
             fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  Next, JDiff will search for ""solutions"": equal regions between both files.\n");
-            fprintf(JDebug::stddbg, "  The search will use the index table (a hash-table).\n");
-            fprintf(JDebug::stddbg, "  However, the index table is not perfect: too small and inaccurate:\n");
+            fprintf(JDebug::stddbg, "  Using the index, JDiff will search for equal regions between both files.\n");
+            fprintf(JDebug::stddbg, "  The index table however has two problems:\n");
             fprintf(JDebug::stddbg, "  - too small, because a full index would require too much memory.\n");
-            fprintf(JDebug::stddbg, "  - inaccurate, because the hash-keys are only 32 or 64 bit checksums.\n\n");
-            fprintf(JDebug::stddbg, "  That's why a bigger index (-i) improves accuracy (and often also speed).\n");
+            fprintf(JDebug::stddbg, "  - inaccurate, because the hash-keys are only 32 or 64 bit check-sums.\n");
             fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  Also, a \"match\" from the index table index is verified to improve accuracy:\n");
-            fprintf(JDebug::stddbg, "  - by comparing the matched regions.\n");
-            fprintf(JDebug::stddbg, "  - by confirmation from colliding matches further on.\n");
+            fprintf(JDebug::stddbg, "  The inaccuracy is reduced by either:\n");
+            fprintf(JDebug::stddbg, "  - comparing the found matches from the index, which is slower but certain\n");
+            fprintf(JDebug::stddbg, "  - confirmation from subsequent matches, which is faster but uncertain\n");
+            fprintf(JDebug::stddbg, "  Inaccuracy of course can also be reduced with a bigger index table (-i option)\n");
             fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  Confirmations are fast but will never fully guarantee a correct match.\n");
-            fprintf(JDebug::stddbg, "  Comparing is slow when data is not bufferred (must be read from disk).\n");
-            fprintf(JDebug::stddbg, "  The -f/-ff options do not compare unbuffered data: lazier, not always faster.\n");
-            fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  Moreover, the first solution is not always the best solution.\n");
+            fprintf(JDebug::stddbg, "  Also, the first found solution is not always the best solution.\n");
             fprintf(JDebug::stddbg, "  Therefore, JDiff searches a minimum (-n) number of solutions, and\n");
             fprintf(JDebug::stddbg, "  will continue up to a maximum (-x) number of solutions if data is buffered.\n");
-            fprintf(JDebug::stddbg, "  That's why, bigger buffers (-m) may also improve accuracy.\n");
+            fprintf(JDebug::stddbg, "  That's why, bigger buffers (-m) can improve accuracy.\n");
             fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  With the -p and -ff options, JDiff can only index the source file within the\n");
-            fprintf(JDebug::stddbg, "  buffer, so accuracy will be reduced (higher -m may re-improve).\n");
-            fprintf(JDebug::stddbg, "  \n");
-            fprintf(JDebug::stddbg, "  Option -b increases the index table and buffers (more speed and accuracy),\n");
-            fprintf(JDebug::stddbg, "  and also the number of solutions to search (slower but better accuracy).\n");
+            fprintf(JDebug::stddbg, "  The -b/-bb options increase the index table, buffers and solutions to search.\n");
+            fprintf(JDebug::stddbg, "  The -f/-ff options will only compare buffered data to gain some speed, but\n");
+            fprintf(JDebug::stddbg, "  will often be slower due to the lower accuracy.\n");
         }
         if (aiArgCnt - liOptArgCnt < 3){
             if  (liHlp == 0)
@@ -567,9 +560,20 @@ int main(int aiArgCnt, char *acArg[])
     }
 
     /* Verify and process parameters, convet MB in bytes etc... */
-    llBufSze *= 1024 * 1024 / 2 ; // divide de by two because we need two buffers
-    if (liAhdMax==0)
-        liAhdMax = llBufSze ;
+    llBufSze *= 1024 * 1024 / 2 ; // divide by two because we need two buffers
+    if (llBufSze % liBlkSze != 0)
+        fprintf(JDebug::stddbg, "\nWarning: Buffer size is not a multiple of block size, partial reads will occur !\n");
+
+    if (liBlkSze > llBufSze && llBufSze > 0) {
+        fprintf(JDebug::stddbg, "\nWarning: Block size cannot be larger than buffer size, reducing to %ld !!\n", llBufSze);
+        liBlkSze = llBufSze ;
+    }
+
+    if (liAhdMax==0){
+        liAhdMax = llBufSze - liBlkSze ;
+        if (liAhdMax < 512)
+            liAhdMax = 512 ;
+    }
 
     /* Open files and create file handlers */
     JFile *lpJflOrg = NULL ;
@@ -587,7 +591,7 @@ int main(int aiArgCnt, char *acArg[])
     if (lbStdio) {
         /* We always need a buffer */
         if (llBufSze == 0) {
-            fprintf(JDebug::stddbg, "%s\n", "Buffer size cannot be zero, set to %d.\n", liBlkSze);
+            fprintf(JDebug::stddbg, "\nWarning: Buffer size cannot be zero, set to %d.\n", liBlkSze);
             llBufSze = liBlkSze ;
         }
 
@@ -689,22 +693,6 @@ int main(int aiArgCnt, char *acArg[])
         exit(- EXI_SCD);
     }
 
-    // Switch to sequential source file
-    if (! lbSeqOrg && lpJflOrg->isSequential()){
-        lbSeqOrg = true ;
-        lbCmpAll = false ;            // only compare data within the buffer
-        lbSrcBkt = false ;            // only backtrack on source file in buffer
-        liSrcScn = 0;                 // no pre-scan indexing
-
-        fprintf(JDebug::stddbg, "\n%s\n", "Warning: Source file is a sequential file, assuming -p.");
-    }
-    // sequential destination file
-    if (! lbSeqNew && lpJflNew->isSequential()){
-        lbSeqNew = true ;
-        liMchMin = 0;                 // only search within the buffer
-        fprintf(JDebug::stddbg, "\n%s\n", "Warning: Destination file is a sequential file, assuming -q.");
-    }
-
      /* Open output */
     if (strcmp(lcFilNamOut,csStdInpOutNam) == 0 ){
         lpFilOut = stdout ;
@@ -723,11 +711,27 @@ int main(int aiArgCnt, char *acArg[])
         exit(- EXI_OUT);
     }
 
-
     /* Execute required function */
-    int liRet ; /**< return code */
-    if (liFun % 2 == 0) {
+    int liRet = EXI_ARG ; /**< default return code */
+    if (liFun == Diff || liFun == Test) {
         /* Perform JDiff */
+        // Switch to sequential source file
+        if (! lbSeqOrg && lpJflOrg->isSequential()){
+            lbSeqOrg = true ;
+            lbCmpAll = false ;            // only compare data within the buffer
+            lbSrcBkt = false ;            // only backtrack on source file in buffer
+            liSrcScn = 0;                 // no pre-scan indexing
+
+            fprintf(JDebug::stddbg, "\n%s\n", "Warning: Source file is a sequential file, assuming -p.");
+        }
+
+        // Switch to sequential destination file
+        if (! lbSeqNew && lpJflNew->isSequential()){
+            lbSeqNew = true ;
+            liMchMin = 0;                 // only search within the buffer
+            fprintf(JDebug::stddbg, "\n%s\n", "Warning: Destination file is a sequential file, assuming -q.");
+        }
+
         /* Init output */
         JOut *lpOut ;
         switch (liOutTyp) {
@@ -755,8 +759,8 @@ int main(int aiArgCnt, char *acArg[])
                     ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
                     loJDiff.getHsh()->get_hashprime()) ;
             fprintf(JDebug::stddbg, "Search size     (0 = buffersize) (-a): %dkb\n",  liAhdMax / 1024 );
-            fprintf(JDebug::stddbg, "Buffer size        (default 2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
-            fprintf(JDebug::stddbg, "Block  size        (default 8kb) (-b): %dkb\n",  liBlkSze / 1024);
+            fprintf(JDebug::stddbg, "Buffer size       (default  2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
+            fprintf(JDebug::stddbg, "Block  size       (default 32kb) (-b): %dkb\n",  liBlkSze / 1024);
             fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
             fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);
             fprintf(JDebug::stddbg, "Compare out-of-buffer (-f to disable): %s\n",    lbCmpAll?"yes":"no");
@@ -779,8 +783,8 @@ int main(int aiArgCnt, char *acArg[])
             fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
             fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   JMatchTable::siHshRpr) ;
             fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
-            fprintf(JDebug::stddbg, "Search      errors      = %d\n",   loJDiff.getHshErr()) ;
             fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
+            fprintf(JDebug::stddbg, "Inaccurate  solutions   = %d\n",   loJDiff.getHshErr()) ;
             fprintf(JDebug::stddbg, "Source      seeks       = %ld\n",  lpJflOrg->seekcount());
             fprintf(JDebug::stddbg, "Destination seeks       = %ld\n",  lpJflNew->seekcount());
             fprintf(JDebug::stddbg, "Delete      bytes       = %" PRIzd "\n", lpOut->gzOutBytDel);
@@ -797,7 +801,7 @@ int main(int aiArgCnt, char *acArg[])
                     lpOut->gzOutBytCtl + lpOut->gzOutBytEsc + lpOut->gzOutBytDta);
         }
     } /* liFun == 0 or 2 */
-    if (liFun == 1) {
+    if (liFun == Patch || liFun == Test) {
         JFileOut loFilOut(lpFilOut) ;
 
         JPatcht loJPatcht(*lpJflOrg, *lpJflNew, loFilOut, liVerbse) ;
@@ -839,22 +843,24 @@ int main(int aiArgCnt, char *acArg[])
     case EXI_MEM:
         fprintf(JDebug::stddbg, "\nError allocating memory !\n");
         exit (- EXI_MEM);
+    case EXI_ARG:
+        fprintf(JDebug::stddbg, "\nError in arguments !\n");
+        exit (- EXI_ARG);
     case EXI_ERR:
         fprintf(JDebug::stddbg, "\nError occurred !\n");
         exit (- EXI_ERR);
     case EXI_OK:
-        if (liVerbse > 1)
-            exit (EXI_OK) ;
+        exit (EXI_OK) ;
     case EXI_EQL:
         if (liVerbse > 1)
-            fprintf(JDebug::stddbg, "\nNo differences detected.\n");
+            fprintf(JDebug::stddbg, "\nFound all data within source file.\n");
         exit(EXI_OK) ;
     case EXI_DIF:
         if (liVerbse > 1)
-            fprintf(JDebug::stddbg, "\nFiles are different.\n");
+            fprintf(JDebug::stddbg, "\nNot all data has been found in source file.\n");
         exit(EXI_DIF) ;
     default:
         fprintf(JDebug::stddbg, "\nUnknown exit code %d\n", liRet);
-        exit (EXI_ERR);
+        exit (- EXI_ERR);
     }
 }

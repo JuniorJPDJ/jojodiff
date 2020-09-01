@@ -173,7 +173,6 @@ bool JOutBin::put (
   if (aiOpr != EQL && mzEqlCnt > 0) {
     if (mzEqlCnt > 4 || (miOprCur != MOD && aiOpr != MOD)) {
       // more than 4 equal bytes => output as EQL
-      //@miOprCur = EQL;
       ufPutOpr(EQL) ;
       ufPutLen(mzEqlCnt);
 
@@ -181,7 +180,6 @@ bool JOutBin::put (
     } else {
       // less than 4 equal bytes => output as MOD
       if (miOprCur != MOD) {
-        //@miOprCur = MOD ;
         ufPutOpr(MOD) ;
       }
       for (int liCnt=0; liCnt < mzEqlCnt; liCnt++)
@@ -194,13 +192,11 @@ bool JOutBin::put (
   switch (aiOpr) {
     case ESC : /* before closing the output */
       ufPutOpr(ESC);
-      //@miOprCur = ESC ;
       break;
 
     case MOD :
     case INS :
       if (miOprCur != aiOpr) {
-        //@miOprCur = aiOpr ;
         ufPutOpr(aiOpr) ;
       }
       ufPutByt(aiNew) ;
@@ -210,7 +206,6 @@ bool JOutBin::put (
       ufPutOpr(DEL) ;
       ufPutLen(azLen);
 
-      //@miOprCur=DEL;
       gzOutBytDel+=azLen;
       break;
 
@@ -218,7 +213,6 @@ bool JOutBin::put (
       ufPutOpr(BKT) ;
       ufPutLen(azLen);
 
-      //@miOprCur=BKT;
       gzOutBytBkt+=azLen;
       break;
 
@@ -235,4 +229,4 @@ bool JOutBin::put (
 
   return false ;
 }
-}
+} /* namespace */
