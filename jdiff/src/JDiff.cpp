@@ -72,9 +72,13 @@
 #else
 #pragma message "INFO: FILE OFFSET BITS NOT SET !"
 #endif
-#ifdef _LARGEFILE64_SOURCE
-#pragma message "INFO: _LARGEFILE64_SOURCE set"
-#endif
+
+#ifdef JDIFF_LARGEFILE
+#pragma message "INFO: JDIFF_LARGEFILE set"
+#else
+#pragma message "INFO: JDIFF_LARGEFILE not set !"
+#endif // JDIFF_LARGEFILE
+
 #ifdef __MINGW32__
 #pragma message "INFO: __MINGW32__ set"
 #endif

@@ -39,7 +39,7 @@ int JFileOut::copyfrom( JFile &apFilInp, off_t azPos, off_t azLen){
     if (lpBuf != null ){
         while (azLen > 0) {
             if (lpBuf == null ){
-                fprintf(stderr, "Error reading original file.\n");
+                fprintf(stderr, "Error reading source file.\n");
                 return (EXI_RED);
             }
             if (lzLen > azLen)
@@ -67,7 +67,7 @@ int JFileOut::copyfrom( JFile &apFilInp, off_t azPos, off_t azLen){
             lcVal = apFilInp.get() ;
         }
         if (azLen > 0){
-            fprintf(stderr, "Error reading original file.\n");
+            fprintf(stderr, "Error reading source file.\n");
             return (EXI_RED);
         }
     }

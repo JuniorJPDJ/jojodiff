@@ -66,7 +66,7 @@
 #define jfread   fread
 
 // Indicate JDIFF that files may be larger that 2GB
-#if _FILE_OFFSET_BIT == 64
+#if _FILE_OFFSET_BITS == 64
 #define JDIFF_LARGEFILE
 #endif
 #ifdef _LARGEFILE64_SOURCE

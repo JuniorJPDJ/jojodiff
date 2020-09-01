@@ -22,11 +22,7 @@
 #ifndef JOUTBIN_H_
 #define JOUTBIN_H_
 
-/*
- *
- */
 #include <stdio.h>
-
 #include "JOut.h"
 
 namespace JojoDiff {

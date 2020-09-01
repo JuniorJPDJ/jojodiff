@@ -19,6 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "JDefs.h"
 #include "JOutBin.h"
 
 namespace JojoDiff {

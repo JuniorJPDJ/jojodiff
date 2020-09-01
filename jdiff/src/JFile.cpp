@@ -19,7 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
- #include <string.h>
+#include <string.h>
 #include "JDefs.h"
 #include "JDebug.h"
 #include "JFile.h"
@@ -43,7 +43,7 @@ void JFile::chkSeq(){
         }
     }
 
-    // File i sequential: initialize EOF position to MAX_OFF_T ;
+    // File is sequential: initialize EOF position to MAX_OFF_T ;
     if (mbSeq) {
         mzPosEof = MAX_OFF_T ;
     }

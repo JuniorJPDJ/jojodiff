@@ -173,7 +173,8 @@
   * 08-2020  083s   Direct reading in buffer space for better performance ?
   * 08-2020  083z   Check for IO errors in JMatchTable add and get
   * 09-2020         Refactor scrollback, align with blocksize
-  * 09-2020         Performance: Soft ahead in check once EQLSZE bytes are found ?
+  * 09-2020         JMatchTable::check - Performance: Soft ahead once EQLSZE bytes are found ?
+  * 09-2020         JMatchTable::check - Accuracy: Distinguish between EOB and short equals.
   * 09-2020         Remove liMax logic from ufFndAhd ?
   * 09-2020         Incremental source scanning: separate function, full buffer with getbuf
   * 09-2020         Optimize Cycled logic in buffer logic (JFileAhead)
@@ -450,13 +451,17 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "You should have received a copy of the GNU General Public License\n");
         fprintf(JDebug::stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n\n");
 
-        off_t maxoff_t_gb = (MAX_OFF_T >> 30) + 1 ;
+        off_t maxoff_t_gb = (MAX_OFF_T >> 30) ;
+        #ifndef JDIFF_LARGEFILE
+        maxoff_t_gb = 2 ;           // without JDIFF_LARGEFILE, filesize is limited to 2GB
+        #endif // JDIFF_LARGEFILE
         const char *maxoff_t_mul = "GB";
         if (maxoff_t_gb > 1024) {
             maxoff_t_gb = maxoff_t_gb >> 10 ;
             maxoff_t_mul = "TB";
         }
-        fprintf(JDebug::stddbg, "File adressing is %d bit (files up to %" PRIzd " %s), samples are %d bytes.\n",
+
+        fprintf(JDebug::stddbg, "File adressing is %d bit for files up to %d%s, samples are %d bytes.\n",
                 (int) (sizeof(off_t) * 8), maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
     }
 
