@@ -31,6 +31,9 @@
 namespace JojoDiff {
 
 class JOutRgn: public JojoDiff::JOut {
+    JOutRgn(JOutRgn const&) = delete;
+    JOutRgn& operator=(JOutRgn const&) = delete;
+
 public:
     JOutRgn(FILE *apFilOut );
     virtual ~JOutRgn();

@@ -28,6 +28,9 @@ namespace JojoDiff {
 
 class JFileAheadStdio : public JFileAhead
 {
+    JFileAheadStdio(JFileAheadStdio const&) = delete;
+    JFileAheadStdio& operator=(JFileAheadStdio const&) = delete;
+
 public:
     /** Default constructor */
     JFileAheadStdio(FILE * const apFil, char const * const asFid,
@@ -36,6 +39,11 @@ public:
 
     /** Default destructor */
     virtual ~JFileAheadStdio();
+
+ 	/**
+	* @brief Get underlying file descriptor.
+	*/
+	virtual int get_fd() const ;
 
 protected:
 

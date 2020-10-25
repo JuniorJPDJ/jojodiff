@@ -25,9 +25,14 @@
 #include <stdio.h>
 #include "JOut.h"
 
+#define MINEQL 2    // start EQL-sequence on 3'rd byte
+
 namespace JojoDiff {
 
 class JOutBin: public JOut {
+    JOutBin(JOutBin const&) = delete;
+    JOutBin& operator=(JOutBin const&) = delete;
+
 public:
     JOutBin(FILE *apFilOut );
     virtual ~JOutBin();
@@ -46,8 +51,8 @@ private:
 
     int   miOprCur ;        /**< current operand: INS, MOD, EQL or DEL. */
     off_t mzEqlCnt ;        /**< number of pending equal bytes */
-    int   miEqlBuf[4];      /**< first four equal bytes */
-    int mbOutEsc;           /**< Pending escape character in data stream  ?*/
+    int   miEqlBuf[MINEQL]; /**< first four equal bytes */
+    int   mbOutEsc;         /**< Pending escape character in data stream  ?*/
 
     /**@brief Output one byte of data */
     void ufPutByt ( int aiByt ) ;

@@ -40,6 +40,8 @@ namespace JojoDiff {
  */
 class JFile {
 public:
+    JFile(JFile const&) = delete;
+    JFile& operator=(JFile const&) = delete;
 	virtual ~JFile(){};
 
 	/**
@@ -57,7 +59,7 @@ public:
 	* - Test      = read for testing purposes, use data from buffer when possible but never
 	*               change the buffer (to avoid interference)
 	*/
-    enum eAhead { Read, HardAhead, SoftAhead, Test } ;
+    enum eAhead { Read, HardAhead, SoftAhead } ;
 
 	/**
 	 * @brief Get byte at specified address and increment the address to the next byte.
@@ -107,11 +109,23 @@ public:
 	virtual long seekcount() { return mlFabSek ; }
 
 	/**
-	 * @brief For buffered files, return the position of the buffer
+	* @brief Get underlying file descriptor.
+	*/
+	virtual int get_fd() const { return -1 ; }
+
+	/**
+	 * @brief Return the position of the buffer
 	 *
 	 * @return  -1=no buffering, > 0 : first position in buffer
 	 */
 	virtual off_t getBufPos() { return -1 ; }
+
+	/**
+	 * @brief Return the size of the buffer
+	 *
+	 * @return  -1=no buffering, > 0 : size of the buffer
+	 */
+	virtual long getBufSze() { return -1 ; }
 
 	 /**
 	 * @brief Get access to (fast) buffered read.

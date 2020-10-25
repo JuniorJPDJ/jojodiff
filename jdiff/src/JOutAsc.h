@@ -33,6 +33,9 @@ namespace JojoDiff {
  *@brief Simple ascii output function for visualisation
  */
 class JOutAsc: public JOut {
+    JOutAsc(JOutAsc const&) = delete;
+    JOutAsc& operator=(JOutAsc const&) = delete;
+
 public:
     JOutAsc(FILE *apFilOut );
 

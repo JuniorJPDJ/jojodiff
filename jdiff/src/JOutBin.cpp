@@ -170,16 +170,16 @@ bool JOutBin::put (
   off_t azPosOrg,
   off_t azPosNew
 )
-{ /* Output a pending EQL operand (if more than 4 equal bytes) */
+{ /* Output a pending EQL operand (if MINEQL or more equal bytes) */
   if (aiOpr != EQL && mzEqlCnt > 0) {
-    if (mzEqlCnt > 4 || (miOprCur != MOD && aiOpr != MOD)) {
-      // more than 4 equal bytes => output as EQL
+    if (mzEqlCnt > MINEQL || (miOprCur != MOD && aiOpr != MOD)) {
+      // as of 3 equal bytes => output as EQL (ESC EQL <cnt>)
       ufPutOpr(EQL) ;
       ufPutLen(mzEqlCnt);
 
       gzOutBytEql+=mzEqlCnt;
     } else {
-      // less than 4 equal bytes => output as MOD
+      // less than 3 equal bytes => output as MOD
       if (miOprCur != MOD) {
         ufPutOpr(MOD) ;
       }
@@ -218,9 +218,9 @@ bool JOutBin::put (
       break;
 
     case EQL :
-      if (mzEqlCnt < 4) {
+      if (mzEqlCnt < MINEQL) {
           miEqlBuf[mzEqlCnt++] = aiOrg ;
-          return (mzEqlCnt >= 4) ;
+          return (mzEqlCnt >= MINEQL) ;
       } else {
           mzEqlCnt+=azLen ;
           return true ;
@@ -229,5 +229,5 @@ bool JOutBin::put (
   }
 
   return false ;
-}
+} /* put() */
 } /* namespace */

@@ -20,6 +20,7 @@
  */
 
 #include "JOutRgn.h"
+#include "JOutBin.h"      // only for definition of MINEQL
 
 namespace JojoDiff {
 
@@ -75,8 +76,12 @@ bool JOutRgn::put (
         break;
 
       case (EQL) :
-        gzOutBytCtl+=2+ufPutLen(szOprCnt);
-        gzOutBytEql+=szOprCnt ;
+        if (szOprCnt <= MINEQL)
+            gzOutBytDta+=szOprCnt ;
+        else {
+            gzOutBytCtl+=2+ufPutLen(szOprCnt);
+            gzOutBytEql+=szOprCnt ;
+        }
         fprintf(mpFilOut, P8zd " " P8zd " EQL %" PRIzd "\n", azPosOrg - szOprCnt, azPosNew - szOprCnt, szOprCnt);
         break;
     }

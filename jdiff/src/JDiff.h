@@ -39,12 +39,12 @@
  *      hkey = hash key of a 32 byte sample in the original input file
  *      position = position of this sample in the file
  * 2) compares both files byte by byte
- * 3) when a difference is found, looks ahead using ufFndAhd to find the nearest
+ * 3) when a difference is found, looks ahead using search() to find the nearest
  *    equal region between both files
  * 4) output skip/delete/backtrace instructions to reach the found regions
  * 5) repeat steps 2-4 each time the end of an equal region is reached.
  *
- * Method ufFndAhd looks ahead on the input files to find the nearest equals regions:
+ * Method search looks ahead on the input files to find the nearest equals regions:
  * - for every 32-byte sample in the new file, look in the hastable whether a
  *   similar sample exists in the original file.
  * - creates a table of matching regions using this catalog
@@ -56,11 +56,7 @@
  * - Samples are considered equal when their hash-keys are equal (in fact there's only
  *   1/256 chance that samples are really equal of their hash-keys match).
  *
- * Method ufFndAhdGet gets one byte of a file and counts the number of subsequent
- * equal bytes (because samples containing too many equal bytes are usually bad to
- * compare with between files).
- *
- * Method ufFndhdScn scans the left file and creates the hash table.
+ * Method buildFullIndex scans the left file and creates the hash table.
  *
  * TODO: allow org and new files to be the same file
  * TODO: allow sequential files as input
@@ -152,6 +148,9 @@ namespace JojoDiff {
  */
 class JDiff {
 public:
+    JDiff(JDiff const&) = delete;
+    JDiff& operator=(JDiff const&) = delete;
+
     /**
      * Create JDiff for working on specified files.
      * @param apFilOrg  Original file.
@@ -180,8 +179,8 @@ public:
 	 */
 	virtual ~JDiff();
 
-	/*******************************************************************************
-	* Difference function
+	/**
+	* @brief Difference function
 	*
 	* Writes out the differences between the two files passed via the constructor.
 	*
@@ -195,14 +194,57 @@ public:
     * @return EXI_WRI  9    Error writing file
     * @return EXI_MEM  10   Error allocating memory
     * @return EXI_ERR  20   Spurious error occured
-	*******************************************************************************/
+	*/
 	int jdiff ();
 
 	/* getters */
-	JHashPos * getHsh(){return gpHsh;};
-	int getHshErr(){return giHshErr;};
+	JHashPos * getHsh(){return gpHsh;};     /**< get jdiff's internal hash table */
+	JMatchTable * getMch(){return gpMch;};  /**< get jdiff's internal matching table */
+	int getHshErr(){return miHshErr;};      /**< get number of false hash hits */
 
 private:
+
+	/**
+	 * @brief Finds the nearest equal regions between the two files
+	 *
+	 * @param azRedOrg  in:  read position in original file to start looking from
+	 * @param azRedNew  in:  read position in new file to start looking from
+	 * @param azSkpOrg  out: number of bytes to skip (delete) in original file to reach equal region
+	 * @param azSkpNew  out: number of bytes to skip (insert) in new file to reach equal region
+	 * @param azAhd     out: number of bytes to go ahead on both files to reach equal regions
+	 */
+	int search (
+	  off_t const &azRedOrg,        /* read position in original file                     */
+	  off_t const &azRedNew,        /* read position in new file                          */
+	  off_t &azSkpOrg,              /* number of bytes to skip (delete) in original file  */
+	  off_t &azSkpNew,              /* number of bytes to skip (insert) in new file       */
+	  off_t &azAhd                  /* number of bytes to go before similarity is reached */
+	);
+
+	/**
+     * @brief The hash function
+     *
+     * Generate a new hash value by adding a new byte.
+     * Old bytes are shifted out from the hash value in such a way that
+     * the new value corresponds to a sample of 32 bytes (the lowest bit of the 32'th
+     * byte still influences the highest bit of the hash value).
+     *
+     * @param   acNew       character to hash
+     * @param   akCurHsh    hash key (in & out)
+     * @param   aiEql       equal-chars count
+     */
+    inline hkey hash ( hkey const akCurHsh, int &acOld, int const acNew, int &aiEql) const ;
+
+    /**
+     * @brief Scans the original file and fills up the hashtable.
+     */
+    int buildFullIndex () ;
+
+	/**
+	 * @brief Flush pending output
+	 */
+	void flushEql(const off_t &azPosOrg, const off_t &azPosNew, off_t &azEql, bool &abEql) const ;
+
 	/* Context */
 	JFile * const mpFilOrg ;    // Original file to read
 	JFile * const mpFilNew ;    // New file to read
@@ -212,7 +254,7 @@ private:
 
 	/* Settings */
 	const int miVerbse;     /* Vebosity level */
-	const int mbSrcBkt;     /* Allow bactrace on original file? */
+	const bool mbSrcBkt;    /* Allow bactrace on original file? */
 	const int miMchMax;     /* Max number of matches to find */
 	const int miMchMin;     /* Min number oif matches to find */
 	const int miAhdMax ;    /* Max number of bytes to look ahead */
@@ -231,38 +273,11 @@ private:
 	int miEqlOrg;          // Indicator for equal bytes in current sample
 	int miEqlNew;          // Indicator for equal bytes in current sample
 
-	/**
-	 * @brief Flush pending output
-	 */
-	void ufPutEql(const off_t &lzPosOrg, const off_t &lzPosNew, off_t &lzEql, bool &lbEql) const ;
-
-	/**
-	 * @brief Finds the nearest equal regions between the two files
-	 *
-	 * @param azRedOrg  in:  read position in original file to start looking from
-	 * @param azRedNew  in:  read position in new file to start looking from
-	 * @param azSkpOrg  out: number of bytes to skip (delete) in original file to reach equal region
-	 * @param azSkpNew  out: number of bytes to skip (insert) in new file to reach equal region
-	 * @param azAhd     out: number of bytes to go ahead on both files to reach equal regions
-	 */
-	int ufFndAhd (
-	  off_t const &azRedOrg,        /* read position in original file                     */
-	  off_t const &azRedNew,        /* read position in new file                          */
-	  off_t &azSkpOrg,              /* number of bytes to skip (delete) in original file  */
-	  off_t &azSkpNew,              /* number of bytes to skip (insert) in new file       */
-	  off_t &azAhd                  /* number of bytes to go before similarity is reached */
-	);
-
-    /**
-     * @brief Scans the original file and fills up the hashtable.
-     */
-    int ufFndAhdScn () ;
-
-public:
     /*
      * Statistics about operations
      */
-    int giHshErr ;         /* Number of false hash hits                         */
+    int miHshErr ;         /* Number of false hash hits                         */
+
 }; // class JDiff
 
 } // namespace JojoDiff

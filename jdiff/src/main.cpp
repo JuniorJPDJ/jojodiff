@@ -136,6 +136,10 @@
  * joheirba  v0.8.3z   Aug 2020 Review matchtable logic for non-compared matched
  * joheirba  v0.8.4b   Sep 2020 Review hash-reinitialization for incremental scanning
  * joheirba  v0.8.4c   Sep 2020 Finalize release of intermediate version
+ * joheirba  v0.8.5a   Sep 2020 Revised buffer logic for sequential files
+ * joheirba  v0.8.5b   Sep 2020 Removed unbuffered JFileIStream implementation
+ * joheirba  v0.8.5d   Oct 2020 Deduplication feature (experimental)
+ * joheirba  v0.8.5e   Oct 2020 Reduce compares (check): reuse negative results
  *
  *******************************************************************************/
 
@@ -178,6 +182,7 @@
   * 09-2020         Remove liMax logic from ufFndAhd ?
   * 09-2020         Incremental source scanning: separate function, full buffer with getbuf
   * 09-2020         Optimize Cycled logic in buffer logic (JFileAhead)
+  * 10-2020         Refactor JMatchTable logic: reduce cleanup() calls
   *
   ******************************************************************************/
 /*
@@ -195,7 +200,6 @@ using namespace std ;
 #include <iostream>
 #include <istream>
 #include <fstream>
-#include "JFileIStream.h"
 #include "JFileAheadIStream.h"
 #include "JFileAheadStdio.h"
 
@@ -207,6 +211,9 @@ using namespace std ;
 #include "JOutRgn.h"
 #include "JFile.h"
 #include "JFileOut.h"
+#ifdef JDIFF_DEDUP
+#include "JOutDedup.h"
+#endif // JDIFF_DEDUP
 
 #ifdef _WIN32
 #include <io.h>
@@ -219,7 +226,7 @@ using namespace JojoDiff ;
 /*********************************************************************************
 * Options parsing
 *********************************************************************************/
-const char *gcOptSht = "a:bcd:fhi:jk:lm:n:pqrst::uvx:"; /* u:: for optional aruments */
+const char *gcOptSht = "a:bcd:fhi:jk:lm:n:pqrst::uvx:y"; /* u:: for optional aruments */
 
 struct option gsOptLng [] = {
     {"better",            no_argument,      NULL,'b'},
@@ -241,6 +248,7 @@ struct option gsOptLng [] = {
     {"search-size",       required_argument,NULL,'a'},
     {"search-min",        required_argument,NULL,'n'},
     {"search-max",        required_argument,NULL,'x'},
+    {"reflink",           no_argument,      NULL,'y'},
     {"verbose",           no_argument,      NULL,'v'},
     {NULL,0,NULL,0}
 };
@@ -263,7 +271,7 @@ int main(int aiArgCnt, char *acArg[])
     int lbSrcBkt = true;          /**< Backtrace on sourcefile allowed?                 */
     bool lbCmpAll = true ;        /**< Compare even if data not in buffer?              */
     int liSrcScn = 1 ;            /**< Prescan source file: 0=no, 1=do, 2=done          */
-    int liMchMax = 512 ;          /**< Maximum entries in matching table.               */
+    int liMchMax = 128 ;          /**< Maximum entries in matching table.               */
     int liMchMin = 2 ;            /**< Minimum entries in matching table.               */
     int liHshMbt = 32 ;           /**< Hashtable size in MB (* 1024 * 1024)             */
     long llBufSze = 2 ;           /**< Default file-buffers size in MB                  */
@@ -274,7 +282,7 @@ int main(int aiArgCnt, char *acArg[])
     int liTst=0;                  /**< test to execute : 0 = normal, 1 etc... see JTest */
     bool lbSeqOrg = false;        /**< Sequential source file ?                         */
     bool lbSeqNew = false;        /**< Sequential destination file ?                    */
-    enum {Diff, Patch, Test} liFun = Diff;  /**< function to execute                    */
+    enum {Diff, Patch, Dedup, Test} liFun = Diff;  /**< function to execute             */
 
     JDebug::stddbg = stderr ;     /**< Debug and informational (verbose) output         */
 
@@ -293,8 +301,10 @@ int main(int aiArgCnt, char *acArg[])
         lcCmd = lcCmdTst + 1;
     if (strncasecmp(lcCmd, "jpatch", 6) == 0)
         liFun=Patch ;
+    else if (strncasecmp(lcCmd, "jdedup", 6) == 0)
+        liFun=Dedup ;
     else if (strncasecmp(lcCmd, "jtst", 4) == 0)
-        liFun=Test;
+        liFun=Test ;
 
     /* parse option-switches */
     while((lcOptSht = getopt_long(aiArgCnt, acArg, gcOptSht, gsOptLng, &liOptLng))!=EOF) {
@@ -305,7 +315,7 @@ int main(int aiArgCnt, char *acArg[])
             liSrcScn = 1 ;            // create full index on source file
             llBufSze *= 4 ;           // larger buffer (more soft-ahead searching)
             liMchMin *= 2 ;           // increase minimum number of matches to search
-            liMchMax *= 2 ;           // increase maximum number of matches to search
+            liMchMax *= 4 ;           // increase maximum number of matches to search
             liHshMbt *= 4 ;           // Increase index table size
             break;
         case 'f': // faster (or rather: lazier)
@@ -351,7 +361,7 @@ int main(int aiArgCnt, char *acArg[])
             liOutTyp = 2 ;
             break;
         case 's': // use stdio
-            lbStdio=! lbStdio ; /* switch */
+            lbStdio = true ;
             break;
         case 't':   // test: patch and unpatch in one go
             liFun = Test ;
@@ -366,10 +376,23 @@ int main(int aiArgCnt, char *acArg[])
         case 'v': // "verbose",           no_argument
             liVerbse++;
             break;
+        case 'y':   // deduplicate
+            liFun = Dedup ;
+            liOutTyp = 3 ;
+            lbStdio = true ;
+            if (optarg)
+                liTst = atoi(optarg);    //@todo: minimum dedup size
+            else
+                liTst=0;
+            break ;
 
         case 'a': // search-ahead-size
-            liAhdMax = atoi(optarg) / 2 * 1024 ;
+            if (optarg)
+                liAhdMax = atoi(optarg) / 2 * 1024 ;
+            else
+                liAhdMax = 0 ;
             break;
+
         case 'i': // index-size
             liHshMbt = atoi(optarg) ;
             if (liHshMbt <= 0){
@@ -438,18 +461,18 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "\nJDIFF - binary diff version " JDIFF_VERSION "\n") ;
         fprintf(JDebug::stddbg, JDIFF_COPYRIGHT "\n");
         fprintf(JDebug::stddbg, "\n") ;
-        fprintf(JDebug::stddbg, "JojoDiff is free software: you can redistribute it and/or modify\n");
-        fprintf(JDebug::stddbg, "it under the terms of the GNU General Public License as published by\n");
-        fprintf(JDebug::stddbg, "the Free Software Foundation, either version 3 of the License, or\n");
+        fprintf(JDebug::stddbg, "JojoDiff is free software: you can redistribute it and/or modify it\n");
+        fprintf(JDebug::stddbg, "under the terms of the  GNU General Public License  as published by\n");
+        fprintf(JDebug::stddbg, "the Free Software Foundation,  either version 3 of the License,  or\n");
         fprintf(JDebug::stddbg, "(at your option) any later version.\n");
         fprintf(JDebug::stddbg, "\n");
         fprintf(JDebug::stddbg, "This program is distributed in the hope that it will be useful,\n");
         fprintf(JDebug::stddbg, "but WITHOUT ANY WARRANTY; without even the implied warranty of\n");
-        fprintf(JDebug::stddbg, "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n");
+        fprintf(JDebug::stddbg, "MERCHANTABILITY  or  FITNESS FOR A PARTICULAR PURPOSE. See the\n");
         fprintf(JDebug::stddbg, "GNU General Public License for more details.\n");
         fprintf(JDebug::stddbg, "\n");
         fprintf(JDebug::stddbg, "You should have received a copy of the GNU General Public License\n");
-        fprintf(JDebug::stddbg, "along with this program.  If not, see <http://www.gnu.org/licenses/>.\n\n");
+        fprintf(JDebug::stddbg, "along with this program. If not, see www.gnu.org/licenses/gpl-3.0\n\n");
 
         off_t maxoff_t_gb = (MAX_OFF_T >> 30) ;
         #ifndef JDIFF_LARGEFILE
@@ -462,7 +485,7 @@ int main(int aiArgCnt, char *acArg[])
         }
 
         fprintf(JDebug::stddbg, "File adressing is %d bit for files up to %d%s, samples are %d bytes.\n",
-                (int) (sizeof(off_t) * 8), maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
+                (int) (sizeof(off_t) * 8), (int) maxoff_t_gb, maxoff_t_mul, SMPSZE) ;
     }
 
     if ((aiArgCnt - liOptArgCnt < 3) || (liHlp > 0) || (liVerbse>2)) {
@@ -472,8 +495,14 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "the first by \"undiffing\". JDiff aims for the smallest possible diff file.\n\n"),
 
         fprintf(JDebug::stddbg, "Usage: jdiff -j [options] <source file> <destination file> [<diff file>]\n") ;
+        #ifdef JDIFF_DEDUP
+        //@fprintf(JDebug::stddbg, "   or: jdiff -y [options] <source file> <destination file>\n") ;
+        #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "   or: jdiff -u [options] <source file> <diff file> [<destination file>]\n\n") ;
         fprintf(JDebug::stddbg, "  -j                       JDiff:  create a difference file.\n");
+        #ifdef JDIFF_DEDUP
+        //@fprintf(JDebug::stddbg, "  -y                       JDedup: deduplicate files\n") ;
+        #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "  -u                       Undiff: undiff a difference file.\n\n");
 
         fprintf(JDebug::stddbg, "  -v --verbose             Verbose: greeting, results and tips.\n");
@@ -493,6 +522,9 @@ int main(int aiArgCnt, char *acArg[])
         #ifndef JDIFF_STDIO_ONLY
         fprintf(JDebug::stddbg, "  -s --stdio               Use stdio files (for testing).\n");
         #endif // JDIFF_STDIO_ONLY
+        #ifdef JDIFF_DEDUP
+        fprintf(JDebug::stddbg, "  -y --reflink             Reflink to source file if possible.\n") ;
+        #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "\n");
         fprintf(JDebug::stddbg, "  -a --search-size <size>  Size (in KB) to search (default=buffer-size).\n");
         fprintf(JDebug::stddbg, "  -i --index-size  <size>  Size (in MB) for index table    (default 64).\n");
@@ -568,18 +600,28 @@ int main(int aiArgCnt, char *acArg[])
 
     /* Verify and process parameters, convet MB in bytes etc... */
     llBufSze *= 1024 * 1024 / 2 ; // divide by two because we need two buffers
-    if (llBufSze % liBlkSze != 0)
-        fprintf(JDebug::stddbg, "\nWarning: Buffer size is not a multiple of block size, partial reads will occur !\n");
 
-    if (liBlkSze > llBufSze && llBufSze > 0) {
-        fprintf(JDebug::stddbg, "\nWarning: Block size cannot be larger than buffer size, reducing to %ld !!\n", llBufSze);
-        liBlkSze = llBufSze ;
+    // Buffer size cannot be zero and must be aligned on block size
+    // Block size  cannot be larger than buffer size
+    if (llBufSze == 0) {
+        fprintf(JDebug::stddbg, "\nWarning: Buffer size cannot be zero, set to %d.\n", liBlkSze);
+        llBufSze = liBlkSze ;
+    }
+    if (llBufSze % liBlkSze != 0){
+        llBufSze -= llBufSze % liBlkSze ;
+        if (llBufSze == 0){
+            llBufSze = liBlkSze;
+        }
+        fprintf(JDebug::stddbg, "Warning: Buffer size misaligned with block size: set to %ld.\n", llBufSze);
     }
 
+    // Default search ahead window
     if (liAhdMax==0){
-        liAhdMax = llBufSze - liBlkSze ;
-        if (liAhdMax < 512)
-            liAhdMax = 512 ;
+//        liAhdMax = llBufSze / 2 ;
+//        if (llBufSze - liAhdMax < liBlkSze)
+            liAhdMax = llBufSze - liBlkSze ;
+        if (liAhdMax < 4096)
+            liAhdMax = 4096 ;
     }
 
     /* Open files and create file handlers */
@@ -596,12 +638,6 @@ int main(int aiArgCnt, char *acArg[])
     FILE *lfFilNew = NULL ;
 
     if (lbStdio) {
-        /* We always need a buffer */
-        if (llBufSze == 0) {
-            fprintf(JDebug::stddbg, "\nWarning: Buffer size cannot be zero, set to %d.\n", liBlkSze);
-            llBufSze = liBlkSze ;
-        }
-
         /* Open first file */
         if (strcmp(lcFilNamOrg, csStdInpOutNam) == 0 ) {
             // Windows needs some additional tweaking for stdin to work
@@ -632,7 +668,10 @@ int main(int aiArgCnt, char *acArg[])
             // create a JFile
             lpJflNew = new JFileAheadStdio(stdin, "New", llBufSze, liBlkSze, lbSeqNew);
         } else {
-            lfFilNew = jfopen(lcFilNamNew, "rb") ;
+            if (liFun == Dedup)
+                lfFilNew = jfopen(lcFilNamNew, "r+b") ;
+            else
+                lfFilNew = jfopen(lcFilNamNew, "rb") ;
             if (lfFilNew != NULL) {
                 lpJflNew = new JFileAheadStdio(lfFilNew, "New", llBufSze, liBlkSze, lbSeqNew);
             }
@@ -657,11 +696,7 @@ int main(int aiArgCnt, char *acArg[])
         } else {
             loSrmOrg.open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
             if (loSrmOrg.is_open()) {
-                if (llBufSze > 0) {
-                    lpJflOrg = new JFileAheadIStream(loSrmOrg, "Org",  llBufSze, liBlkSze, lbSeqOrg);
-                } else {
-                    lpJflOrg = new JFileIStream(loSrmOrg, "Org", lbSeqOrg);
-                }
+                lpJflOrg = new JFileAheadIStream(loSrmOrg, "Org",  llBufSze, liBlkSze, lbSeqOrg);
             }
         }
 
@@ -680,11 +715,7 @@ int main(int aiArgCnt, char *acArg[])
             loSrmNew.open(lcFilNamNew, ios_base::in | ios_base::binary) ;
 
             if (loSrmNew.is_open()) {
-                if (llBufSze > 0) {
-                    lpJflNew = new JFileAheadIStream(loSrmNew, "New",  llBufSze, liBlkSze, lbSeqNew);
-                } else {
-                    lpJflNew = new JFileIStream(loSrmNew, "New", lbSeqNew);
-                }
+                lpJflNew = new JFileAheadIStream(loSrmNew, "New",  llBufSze, liBlkSze, lbSeqNew);
             }
         }
     }
@@ -700,27 +731,31 @@ int main(int aiArgCnt, char *acArg[])
         exit(- EXI_SCD);
     }
 
-     /* Open output */
-    if (strcmp(lcFilNamOut,csStdInpOutNam) == 0 ){
-        lpFilOut = stdout ;
-
-        // Windows needs dome additional tweaking for stdout to work
-        #ifdef _WIN32
-        if (liVerbse > 1)
-            fprintf(JDebug::stddbg, "%s\n", "Setting Windows stdout to binary mode.");
-        setmode(fileno(lpFilOut), O_BINARY );
-        #endif // __WIN32__
+    /* Open output */
+    if (liFun == Dedup) {
+        lpFilOut = null ;
     } else {
-        lpFilOut = fopen(lcFilNamOut, "wb") ;
-    }
-    if ( lpFilOut == null ) {
-        fprintf(JDebug::stddbg, "Could not open output file %s for writing.\n", lcFilNamOut) ;
-        exit(- EXI_OUT);
+        if (strcmp(lcFilNamOut,csStdInpOutNam) == 0 ){
+            lpFilOut = stdout ;
+
+            // Windows needs dome additional tweaking for stdout to work
+            #ifdef _WIN32
+            if (liVerbse > 1)
+                fprintf(JDebug::stddbg, "%s\n", "Setting Windows stdout to binary mode.");
+            setmode(fileno(lpFilOut), O_BINARY );
+            #endif // __WIN32__
+        } else {
+            lpFilOut = fopen(lcFilNamOut, "wb") ;
+        }
+        if ( lpFilOut == null ) {
+            fprintf(JDebug::stddbg, "Could not open output file %s for writing.\n", lcFilNamOut) ;
+            exit(- EXI_OUT);
+        }
     }
 
     /* Execute required function */
     int liRet = EXI_ARG ; /**< default return code */
-    if (liFun == Diff || liFun == Test) {
+    if (liFun == Diff || liFun == Test || liFun == Dedup) {
         /* Perform JDiff */
         // Switch to sequential source file
         if (! lbSeqOrg && lpJflOrg->isSequential()){
@@ -748,6 +783,11 @@ int main(int aiArgCnt, char *acArg[])
         case 1:
             lpOut = new JOutAsc(lpFilOut);
             break;
+        #ifdef JDIFF_DEDUP
+        case 3:
+            lpOut = new JOutDedup(*lpJflOrg, *lpJflNew, liVerbse) ;
+            break ;
+        #endif // JDIFF_DEDUP
         case 2:
         default:  // XXX get rid of uninitialized warning
             lpOut = new JOutRgn(lpFilOut);
@@ -788,8 +828,8 @@ int main(int aiArgCnt, char *acArg[])
         if (liVerbse > 1) {
             fprintf(JDebug::stddbg, "\n");
             fprintf(JDebug::stddbg, "Index table hits        = %d\n",   loJDiff.getHsh()->get_hashhits()) ;
-            fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   JMatchTable::siHshRpr) ;
-            fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 3 - 1);
+            fprintf(JDebug::stddbg, "Index table repairs     = %d\n",   loJDiff.getMch()->getHshRpr()) ;
+            fprintf(JDebug::stddbg, "Index table overloading = %d\n",   loJDiff.getHsh()->get_hashcolmax() / 4 - 1);
             fprintf(JDebug::stddbg, "Reliability distance    = %d\n",   loJDiff.getHsh()->get_reliability());
             fprintf(JDebug::stddbg, "Inaccurate  solutions   = %d\n",   loJDiff.getHshErr()) ;
             fprintf(JDebug::stddbg, "Source      seeks       = %ld\n",  lpJflOrg->seekcount());

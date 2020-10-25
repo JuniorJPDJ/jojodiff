@@ -35,6 +35,9 @@ namespace JojoDiff {
  * back to the base position for actual comparisons.
  */
 class JFileAhead: public JFile {
+    JFileAhead(JFileAhead const&) = delete;
+    JFileAhead& operator=(JFileAhead const&) = delete;
+
 public:
     JFileAhead(char const * const asFid, const long alBufSze = 256*1024,
                const int aiBlkSze = 8192, const bool abSeq = false);
@@ -94,11 +97,19 @@ public:
 	) ;
 
     /**
-	 * For buffered files, return the position of the buffer
+	 * @brief Return the position of the buffer
 	 *
 	 * @return  -1=no buffering, > 0 : first position in buffer
 	 */
 	off_t getBufPos();
+
+    /**
+	 * @brief Return the size of the buffer
+	 *
+	 * @return  -1=no buffering, > 0 : size of the buffer
+	 */
+	long getBufSze() ;
+
 
 protected:
 
@@ -127,7 +138,7 @@ protected:
 
 private:
     enum eBufOpr { Append, Reset, Scrollback } ;
-    enum eBufDne { Added, Cycled, Partial, EndOfFile = EOF, EndOfBuffer = EOB, SeekError = EXI_SEK } ;
+    enum eBufDne { Added, EndOfFile = EOF, EndOfBuffer = EOB, SeekError = EXI_SEK, ReadError = EXI_RED } ;
 
     /**
      * @brief Get data from the buffer. Call get_fromfile such is not possible.
@@ -159,21 +170,33 @@ private:
         const eAhead aiSft  /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
 
+    /**
+    * @brief Read blocks of data
+    * @param apInp      input buffer
+    * @param azInp      input position
+    * @param azEnd      stop reading when end position in reached
+    */
+    int readblocks(
+        jchar* &apInp,      /* input buffer     */
+        off_t &azInp,       /* input position   */
+        const off_t azEnd   /* end position     */
+    );
+
 private:
     /* Settings */
-    const long mlBufSze;    /**< File lookahead buffer size                   */
-    int miBlkSze;           /**< Block size: read from file in blocks         */
+    long mlBufSze;      /**< File lookahead buffer size                   */
+    int miBlkSze;       /**< Block size: read from file in blocks         */
 
     /* Buffer state */
-    long miRedSze;      /**< distance between izPosRed and izPosInp       */
-    long miBufUsd;      /**< number of bytes used in buffer               */
-    jchar *mpBuf;       /**< read-ahead buffer                            */
-    jchar *mpMax;       /**< read-ahead buffer end                        */
-    jchar *mpInp;       /**< current position in buffer                   */
-    jchar *mpRed;       /**< last position read from buffer				  */
-    off_t mzPosInp;     /**< current position in file                     */
-    off_t mzPosRed;     /**< last position read from buffer				  */
-    off_t mzPosBse;     /**< base position for soft reading               */
+    long miRedSze=0;    /**< distance between izPosRed and izPosInp       */
+    long miBufUsd=0;    /**< number of bytes used in buffer               */
+    jchar *mpBuf=null;  /**< read-ahead buffer                            */
+    jchar *mpMax=null;  /**< read-ahead buffer end                        */
+    jchar *mpInp=null;  /**< current position in buffer                   */
+    jchar *mpRed=null;  /**< last position read from buffer				  */
+    off_t mzPosInp=0;   /**< current position in file                     */
+    off_t mzPosRed=0;   /**< last position read from buffer				  */
+    off_t mzPosBse=0;   /**< base position for soft reading               */
 };
 }/* namespace */
 #endif /* JFileAhead_H_ */

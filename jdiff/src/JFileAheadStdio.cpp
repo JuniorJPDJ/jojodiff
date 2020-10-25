@@ -70,4 +70,12 @@ off_t JFileAheadStdio::jeofpos() {
 size_t JFileAheadStdio::jread(jchar * const apInp, const size_t aiLen) {
     return jfread(apInp, sizeof(jchar), aiLen, mpFil) ;
 } ;
+
+/**
+* @brief Get underlying file descriptor.
+*/
+int JFileAheadStdio::get_fd() const {
+    return fileno(mpFil) ;
+} ;
+
 } /* namespace */

@@ -25,8 +25,8 @@
  * Joris Heirbaut        v0.8.2  06-12-2011 Use jfopen/jfclose/jfseek/jfread to avoid interference with LARGEFILE redefinitions
  */
 
- /*
- * The advantage of opensource is that anyone can tailor the source code to its needs.
+/*
+ * The advantage of OpenSource is that anyone can tailor the source code to its needs.
  *
  * Certain of the settings below are there to suit the need of someone at some moment,
  * so certain settings may be outdated. It's difficult to verify, so they will stay
@@ -38,32 +38,16 @@
 
 #include <stdio.h>
 
-#define JDIFF_VERSION   "0.8.4 (beta) 2020"
+#define JDIFF_VERSION   "0.8.5 (beta) 2020"
 #define JDIFF_COPYRIGHT "Copyright (C) 2002-2020 Joris Heirbaut"
 
-#define XSTR(x) STR(x)
-#define STR(x) #x
-
-#ifdef _DEBUG
-#define debug           1       /**< Include debug code */
-#else
-#define debug           0       /**< Do not include debug code */
-#endif
-
 /*
- * Largefile definitions: how to handle files > 2GB
- *
- * Nowadays (in 2020), _FILE_OFFSET_BIT=64 by default (in most cases).
- * MinGW still sticks to _FILE_OFFSET_BIT=32 by default.
- * I leave it to the Makefile (or compiler settings) to decide whether or not to enable 64-bit file support.
+ * Derive JDIFF-settings from environment definitions:
+ *   JDIFF_LARGEFILE        to support files > 2GB
+ *   JDIFF_STDIO_ONLY       to remove istream support
+ *   JDIFF_THROW_BAD_ALLOC  to throw bad alloc exception when a malloc fails
+ *   JDIFF_DEDUP            to include deduplication feature (linux only)
  */
-// If _FILE_OFFSET_BITS works correctly, following should be right:
-#define off_t    off_t
-#define jfopen   fopen
-#define jfclose  fclose
-#define jfseek   fseeko
-#define jftell   ftello
-#define jfread   fread
 
 // Indicate JDIFF that files may be larger that 2GB
 #if _FILE_OFFSET_BITS == 64
@@ -73,7 +57,48 @@
 #define JDIFF_LARGEFILE
 #endif
 
-// Normal definition
+// Debug mode
+#ifdef _DEBUG
+#define debug           1       /**< Include debug code */
+#else
+#define debug           0       /**< Do not include debug code */
+#endif
+
+// One person had issues with MINGW32 and istreams/malloc.
+// We're adding some definitions to suit everyone's needs.
+// I guess than more recent versions of MINGW may not have these issues.
+#define JDIFF_THROW_BAD_ALLOC
+#ifndef __MINGW64__
+#ifdef  __MINGW32__
+    #define JDIFF_STDIO_ONLY        // don't use istreams
+    #undef  JDIFF_THROW_BAD_ALLOC   // throw bad_alloc if alloc fails
+#endif // __MINGW32__
+#endif // __MINGW64__
+
+// Include deduplication feature ?
+#ifdef __linux__
+//#define JDIFF_DEDUP
+#endif // __linux__
+
+/*
+ * Some utilities
+ */
+#define XSTR(x) STR(x)
+#define STR(x) #x
+
+/*
+ * Largefile definitions: how to handle files > 2GB
+ *
+ * If _FILE_OFFSET_BITS works correctly, following should be right:
+ */
+#define off_t    off_t
+#define jfopen   fopen
+#define jfclose  fclose
+#define jfseek   fseeko
+#define jftell   ftello
+#define jfread   fread
+
+// printf formats for off_t: PRIzd and P8zd
 #define PRIzd "zd"
 
 // MINGW uses ms windows printf that does not use %zd but uses %I64d or %lld
@@ -89,17 +114,6 @@
     #endif // _FILE_OFFSET_BITS
 #endif // __MINGW_PRINTF_FORMAT
 #endif // _GNU_SOURCE
-
-// One person had issues with MINGW32 and istreams/malloc.
-// We're adding some definitions to suit everyone's needs.
-// I guess than more recent versions of MINGW may not have these issues.
-#define JDIFF_THROW_BAD_ALLOC
-#ifndef __MINGW64__
-#ifdef  __MINGW32__
-    #define JDIFF_STDIO_ONLY        // don't use istreams
-    #undef  JDIFF_THROW_BAD_ALLOC   // throw bad_alloc if alloc fails
-#endif // __MINGW32__
-#endif // __MINGW64__
 
 #ifdef JDIFF_LARGEFILE
 #if debug
@@ -119,7 +133,7 @@
 #define null  NULL
 
 #ifdef _LARGESAMPLE
-typedef unsigned long long int  hkey ;  // 64-bit hash keys
+typedef unsigned long long int hkey ;   // 64-bit hash keys
 #define PRIhkey "llx"                   // format to print a hkey
 #else
 typedef unsigned long int hkey ;        // 32-bit hash keys
@@ -143,7 +157,7 @@ const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1)))
 #define EXI_MEM  -10                    /**< Error allocating memory             */
 #define EXI_ERR  -20                    /**< Spurious error occured              */
 
-/**
+/*
  * Output routine constants
  */
 #define ESC     0xA7    /**< 167 Escape       */
@@ -153,10 +167,9 @@ const off_t MAX_OFF_T = (((off_t)-1) ^ (((off_t) 1) << (sizeof(off_t) * 8 - 1)))
 #define EQL     0xA3    /**< 163 Equal        */
 #define BKT     0xA2    /**< 162 Backtrace    */
 
-/**
+/*
 * Some utilities
 */
-
 namespace JojoDiff {
 
     /**
@@ -169,34 +182,4 @@ namespace JojoDiff {
 
 } /* namespace jojodiff */
 
-// Old stuff
-//#if defined _FILE_OFFSET_BITS && _FILE_OFFSET_BITS == 64
-//
-//#else
-//#ifdef _LARGEFILE64_SOURCE
-//#define JDIFF_LARGEFILE
-//#define off_t off64_t
-//#ifdef __MINGW32__
-//#define PRIzd "I64d"
-//#else
-//#define PRIzd "ld"
-//#endif
-//
-//#define jfopen   fopen64
-//#define jfclose  fclose
-//#define jfseek   fseeko64
-//#define jftell   ftello64
-//
-//#else
-//
-//#define off_t off_t
-//#define PRIzd "ld"
-//
-//#define jfopen   fopen
-//#define jfclose  fclose
-//#define jfseek   fseeko
-//#define jftell   ftello
-//
-//#endif
-//#endif
 #endif /* _JDEFS_H */

@@ -30,7 +30,7 @@ namespace JojoDiff {
  * Construct a buffered JFile on an istream.
  */
 JFile::JFile(char const * const asJid, const bool abSeq )
-: msJid(asJid), mbSeq(abSeq)
+: msJid(asJid), mbSeq(abSeq), mzPosEof(MAX_OFF_T)
 {
 }
 
@@ -40,12 +40,8 @@ void JFile::chkSeq(){
         mzPosEof = jeofpos();
         if (mzPosEof < 0) {
             mbSeq = true ;
+            mzPosEof = MAX_OFF_T ;
         }
-    }
-
-    // File is sequential: initialize EOF position to MAX_OFF_T ;
-    if (mbSeq) {
-        mzPosEof = MAX_OFF_T ;
     }
 }
 

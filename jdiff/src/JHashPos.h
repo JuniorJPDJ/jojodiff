@@ -28,15 +28,15 @@
  * of the file at that position. This way, we can efficiently find regions
  * that are equal between both files.
  *
- * Hash function on array of bytes:
+ * Hash function (see JDiff.cpp::hash) on array of bytes:
  *
  * Principle:
  * ----------
  * Input:  a[n]   8-bit values (characters, n=32 or 64 or ...)
- *         e[n]   equality values, each e[x] is between 0 and n
- *                  e[x] = 0             if e[x-1] <> e[x]
- *                  e[x] = e[x-1] + 1    if e[x-1] == e[x] and e[x-1] < n
- *                  e[x] = e[x-1]        if e[x-1] == e[x] and e[x-1] == n
+ *         e[n]   equality values, each e[x] is between 0 and SMPSZE
+ *                  e[x] = 0             if a[x-1] <> a[x]
+ *                  e[x] = e[x-1] + 1    if a[x-1] == a[x] and e[x-1] < SMPSZE
+ *                  e[x] = e[x-1]        if a[x-1] == a[x] and e[x-1] == SMPSZE
  *                  e[0] = 0
  *         p      prime number
  * Output: h[n]   hash for every a[n]
@@ -120,41 +120,8 @@ public:
 	JHashPos(int aiSze);
 
 	virtual ~JHashPos();
-
-	/* @brief The hash function
-	 *
-	 * Generate a new hash value by adding a new byte.
-	 * Old bytes are shifted out from the hash value in such a way that
-	 * the new value corresponds to a sample of 32 bytes (the lowest bit of the 32'th
-	 * byte still influences the highest bit of the hash value).
-	 *
-	 * @param   acNew       character to hash
-	 * @param   akCurHsh    hash key (in & out)
-	 * @param   aiEql       equal-chars count
-	 */
-	inline hkey hash ( hkey const akCurHsh, int &acOld, int const acNew, int &aiEql) const {
-        if (acOld == acNew) {
-	        if (aiEql < SMPSZE) aiEql ++;
-	    } else {
-	        acOld = acNew ;
-	        if (aiEql > 0)
-	            aiEql = 0;
-	    }
-        return (akCurHsh * 2) + acNew + aiEql ;
-	}
-
-	/**
-	* @brief Return the (un)reliability range
-	*
-	* The unreliability range an estimate of the number of bytes to verify
-	* to find a match. Reliability decreases as the hashtable (over)load
-	* increases. This function returns an estimation of the number of bytes to verify
-	* before deciding that regions do not match.
-	*
-	*/
-	inline int get_reliability() const {
-		return miHshRlb ;
-	}
+	JHashPos(JHashPos const&) = delete ;
+	JHashPos& operator=(JHashPos const&) = delete ;
 
 	/**
 	* @brief Add key and position to the index hashtable.
@@ -173,6 +140,23 @@ public:
 	* @return false = key not found, true = key found
 	*/
 	bool get (const hkey akCurHsh, off_t &azPos) ;
+
+	/**
+	* @brief  Hashtable reset: consider table to be empty
+	*/
+	void reset () ;
+
+	/**
+	* @brief Return the (un)reliability range
+	*
+	* The unreliability range an estimate of the number of bytes to verify
+	* to find a match. Reliability decreases as the hashtable (over)load
+	* increases.
+	*
+	*/
+	inline int get_reliability() const {
+		return miHshRlb ;
+	}
 
 	/**
 	* @brief Hashtable printout
@@ -208,18 +192,18 @@ private:
 	/* The hash table. Using a struct causes certain compilers (gcc) to align        */
 	/* fields on 64-bit boundaries, causing 25% memory loss. Therefore, I use        */
 	/* two arrays instead of an array of structs.                                    */
-	off_t *mzHshTblPos ;    /**< Hash values: positions within the original file       */
-	hkey  *mkHshTblHsh ;    /**< Hash keys                                             */
+	off_t *mzHshTblPos=null ;    /**< Hash values: positions within the original file       */
+	hkey  *mkHshTblHsh=null ;    /**< Hash keys                                             */
 
 	/* Size */
-	int miHshPme  ;         /**< prime number for size and hashing              				*/
-	int miHshSze ;          /**< Actual size in bytes of the hashtable          				*/
+	int miHshPme=0  ;       /**< prime number for size and hashing              				*/
+	int miHshSze=0 ;        /**< Actual size in bytes of the hashtable          				*/
 
     /* State */
 	int miHshColMax;        /**< max number of collisions before override       			  */
 	int miHshColCnt;        /**< current number of subsequent collisions.               	  */
 	int miHshRlb ;          /**< hashtable reliability: decreases as the overloading grows 	  */
-    int miLodCnt ;          /**< hashtable load-counter                                       */
+    int miLodCnt=0 ;        /**< hashtable load-counter                                       */
 
     /* Statistics */
     int miHshHit;           /**< number of hits found by this hashtable                       */

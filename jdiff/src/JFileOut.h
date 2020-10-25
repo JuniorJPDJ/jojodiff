@@ -34,6 +34,9 @@ namespace JojoDiff {
 
 class JFileOut
 {
+    JFileOut(JFileOut const&) = delete;
+    JFileOut& operator=(JFileOut const&) = delete;
+
     public:
         virtual ~JFileOut(){};
 

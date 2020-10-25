@@ -139,6 +139,17 @@ void JHashPos::add (hkey akCurHsh, off_t azPos, int aiEqlCnt ){
 } /* ufHshAdd */
 
 /**
+* @brief  Hashtable reset: consider table to be empty
+*/
+void JHashPos::reset () {
+    miLodCnt = miHshPme ;
+    miHshColMax = COLLISION_THRESHOLD;
+    miHshColCnt = COLLISION_THRESHOLD;
+    miHshRlb = SMPSZE + SMPSZE / 2;
+};
+
+
+/**
  * @brief Hasttable lookup
  * @param alCurHsh  in:  hash key to lookup
  * @param lzPos     out: position found
@@ -188,7 +199,7 @@ void JHashPos::dist(off_t azMax, int aiBck){
     int liMin = INT_MAX ;
     int liMax = 0;
 
-    fprintf(JDebug::stddbg, "Hash Dist Overload    = %d\n", miHshColMax / 3);
+    fprintf(JDebug::stddbg, "Hash Dist Overload    = %d\n", miHshColMax / COLLISION_THRESHOLD - 1);
     fprintf(JDebug::stddbg, "Hash Dist Reliability = %d\n", miHshRlb);
 
     liBckCnt = (int *) malloc(aiBck * sizeof(int));
