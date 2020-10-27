@@ -62,7 +62,7 @@ public:
     enum eAhead { Read, HardAhead, SoftAhead } ;
 
 	/**
-	 * @brief Get byte at specified address and increment the address to the next byte.
+	 * @brief Get one byte at specified address and increment the address to the next byte.
 	 *
 	 * Soft read ahead will return an EOB when date is not available in the buffer.
 	 *
@@ -70,22 +70,27 @@ public:
 	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
 	 * @return 			the read character or EOF or EOB.
 	 */
-	virtual int get (
-	    const off_t &azPos,	/* position to read from                */
-	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
-	) = 0 ;
+    inline int get (const off_t &azPos, const eAhead aiSft = Read){
+        if ((azPos == mzPosRed) && (miRedSze > 0)) {
+            mzPosRed++ ;
+            miRedSze--;
+            return *mpRed++;
+        } else {
+            return get_frombuffer(azPos, aiSft);
+        }
+    }
 
-	/**
-	 * @brief Get next byte
-	 *
-	 * Soft read ahead will return an EOB when date is not available in the buffer.
-	 *
-	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
-	 * @return 			the read character or EOF or EOB.
-	 */
-	virtual int get (
-	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
-	) = 0 ;
+    /**
+     * @brief Get next byte
+     *
+     * Soft read ahead will return an EOB when date is not available in the buffer.
+     *
+     * @param   aiSft       soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
+     * @return                      the read character or EOF or EOB.
+     */
+    inline int get (const eAhead aiSft = Read){
+        return get(mzPosRed, aiSft);
+    } ;
 
 	/**
 	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -155,12 +160,27 @@ protected:
     */
     virtual off_t jeofpos() = 0;
 
-protected:
-    char const * const msJid ;      /**< JFile-id           */
-    bool mbSeq ;                    /**< Sequential file    */
-    off_t mzPosEof ;                /**< EOF-position       */
+    /**
+     * @brief Get data from the buffer. Call get_fromfile such is not possible.
+     *
+     * @param azPos		position to read from
+     * @param aiSft		0=read, 1=hard ahead, 2=soft ahead
+     * @return data at requested position, EOF or EOB.
+     */
+    virtual int get_frombuffer(
+        const off_t azPos,    /* position to read from                */
+        const eAhead aiSft    /* 0=read, 1=hard ahead, 2=soft ahead   */
+    ) = 0 ;
 
-    long mlFabSek = 0 ;      /**< Number of times an fseek operation was performed  */
+    char const * const msJid ;      /**< JFile-id                                           */
+    bool mbSeq ;                    /**< Sequential file                                    */
+    long miRedSze=0;                /**< distance between izPosRed and izPosInp             */
+    jchar *mpRed=null;              /**< last position read from buffer				        */
+    off_t mzPosInp=0;               /**< current position in file                           */
+    off_t mzPosRed=0;               /**< last position read from buffer				        */
+    off_t mzPosEof ;                /**< EOF-position                                       */
+
+    long mlFabSek = 0 ;             /**< Number of times an fseek operation was performed   */
 
 };
 } /* namespace */

@@ -43,32 +43,6 @@ public:
                const int aiBlkSze = 8192, const bool abSeq = false);
     virtual ~JFileAhead();
 
-	/**
-	 * @brief Get byte at specified address and increment the address to the next byte.
-	 *
-	 * Soft read ahead will return an EOB when date is not available in the buffer.
-	 *
-	 * @param   azPos	position to read, incremented on read (not for EOF or EOB)
-	 * @param   aiSft	0=read, 1=hard read ahead, 2=soft read ahead
-	 * @return 			the read character or EOF or EOB.
-	 */
-    int get(
-        const off_t &azPos,   /* position to read from                */
-        const eAhead aiSft    /* 0=read, 1=hard ahead, 2=soft ahead   */
-    );
-
-	/**
-	 * @brief Get next byte
-	 *
-	 * Soft read ahead will return an EOB when date is not available in the buffer.
-	 *
-	 * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
-	 * @return 			the read character or EOF or EOB.
-	 */
-	int get (
-	    const eAhead aiSft = Read   /* 0=read, 1=hard ahead, 2=soft ahead   */
-	) ;
-
 	 /**
 	 * @brief Get access to (fast) buffered read.
 	 *
@@ -79,11 +53,6 @@ public:
 	 * @return  buffer, null = azPos not in buffer or no buffer
 	 */
 	jchar *getbuf(const off_t azPos, off_t &azLen, const eAhead aiSft = Read) ;
-
-    /**
-     * Return number of seek operations performed.
-     */
-    long seekcount() const ;
 
 	/**
 	 * @brief Set lookahead base: soft lookahead will fail when reading after base + buffer size
@@ -109,6 +78,11 @@ public:
 	 * @return  -1=no buffering, > 0 : size of the buffer
 	 */
 	long getBufSze() ;
+
+    /**
+     * Return number of seek operations performed.
+     */
+    long seekcount() const ;
 
 
 protected:
@@ -147,7 +121,7 @@ private:
      * @param aiSft		0=read, 1=hard ahead, 2=soft ahead
      * @return data at requested position, EOF or EOB.
      */
-    int get_frombuffer(
+    virtual int get_frombuffer(
         const off_t azPos,    /* position to read from                */
         const eAhead aiSft    /* 0=read, 1=hard ahead, 2=soft ahead   */
     );
@@ -188,14 +162,10 @@ private:
     int miBlkSze;       /**< Block size: read from file in blocks         */
 
     /* Buffer state */
-    long miRedSze=0;    /**< distance between izPosRed and izPosInp       */
     long miBufUsd=0;    /**< number of bytes used in buffer               */
     jchar *mpBuf=null;  /**< read-ahead buffer                            */
     jchar *mpMax=null;  /**< read-ahead buffer end                        */
     jchar *mpInp=null;  /**< current position in buffer                   */
-    jchar *mpRed=null;  /**< last position read from buffer				  */
-    off_t mzPosInp=0;   /**< current position in file                     */
-    off_t mzPosRed=0;   /**< last position read from buffer				  */
     off_t mzPosBse=0;   /**< base position for soft reading               */
 };
 }/* namespace */

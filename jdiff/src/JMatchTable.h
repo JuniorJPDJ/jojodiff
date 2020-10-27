@@ -89,11 +89,10 @@ public:
      *
      * @param       azBseOrg    Cleanup all matches before this position
      * @param       azRedNew    Current reading position
-     * @param       liBck       Max distance to look back
      *
      * @return  Full, GoodMatch or Added
      */
-    eMatchReturn cleanup ( off_t const azBseOrg, off_t const azRedNew, int const liBck );
+    eMatchReturn cleanup ( off_t const azBseOrg, off_t const azRedNew);
 
     /**
     * @brief Get number of hash repairs (matches repaired by comparing).
@@ -160,6 +159,35 @@ private:
         off_t const azRedNew,       /**< Current read position */
         rMch *lpCur                 /**< Element to evaluate */
     ) ;
+
+    /**
+    * @brief Check if given solution is the best one.
+    */
+    bool isBest(rMch * const lpCur, off_t azRedNew, off_t lzTstOrg, off_t lzTstNew,
+                int liCurCmp, int liCurCnt = -1) ;
+
+    /**
+    * @brief Check if a match can be reused (deleted)
+    *
+    * Matches are never deleted but instead reused (overwritten) by new matches.
+    * The matchtable is "full" when no more matches can be reused.
+    * If the matchtable is full, searching must stop, which is bad.
+    * Reusing (overwriting) a still usable match however is also bad.
+    *
+    * A match is considered still usable if may contain information beyond the current best match.
+    * This is flawed, because a next best match may be shorter than the current.
+    * So reusing valid matches is risky but necessary to maximize the search.
+    */
+    bool isOld2Reuse(rMch const * const lpCur, off_t const azRedNew);
+
+    /**
+    * @brief Check if a match can be skipped (iiCmp==-3)
+    *
+    * Skipping is done purely for performance reasons and reduces accuracy.
+    * We're only skipping when the probability of a valid match is really low.
+    * To compensate, skipped matches can be reactivated by a new match from the hashtable.
+    */
+    bool isOld2Skip(rMch const * const lpCur, off_t const azRedNew) ;
 
     /**
 	 * @brief Verify and optimize matches

@@ -126,36 +126,6 @@ void JFileAhead::set_lookahead_base (
 }
 
 /**
- * @brief Get next byte
- *
- * Soft read ahead will return an EOB when date is not available in the buffer.
- *
- * @param   aiSft	soft reading type: 0=read, 1=hard read ahead, 2=soft read ahead
- * @return 			the read character or EOF or EOB.
- */
-int JFileAhead::get (
-    const eAhead aiSft   /* 0=read, 1=hard ahead, 2=soft ahead  */
-) {
-    return get(mzPosRed, aiSft);
-}
-
-/**
- * Gets one byte from the lookahead file.
- */
-int JFileAhead::get (
-    const off_t &azPos, /* position to read from                */
-    const eAhead aiSft     /* 0=read, 1=hard ahead, 2=soft ahead   */
-) {
-    if ((miRedSze > 0) && (azPos == mzPosRed)) {
-        mzPosRed++ ;
-        miRedSze--;
-        return *mpRed++;
-    } else {
-        return get_frombuffer(azPos, aiSft);
-    }
-} /* int get(...) */
-
-/**
  * Tries to get data from the buffer. Calls get_outofbuffer if that is not possible.
  * @param azPos     position to read from
  * @param aiSft     0=read, 1=hard ahead, 2=soft ahead

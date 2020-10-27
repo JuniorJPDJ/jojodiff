@@ -45,10 +45,14 @@ namespace JojoDiff {
 // Reason: control bytes consume byte to, so taking the longer one is better
 #define FZY 0
 
-// Inline functions
+// Cmp codes
+#define CMPINV -1
+#define CMPSKP -2
+#define CMPEOB -3
+
 #define min(a,b) ((a) < (b) ? (a) : (b))
 #define max(a,b) ((a) > (b) ? (a) : (b))
-#define abs(a) ((a) < 0 ? (-a) : (a))
+#define abs(a)   ((a) < 0 ? (-a) : (a))
 
 /*******************************************************************************
 * Matching table functions
@@ -106,6 +110,62 @@ JMatchTable::~JMatchTable() {
     free(mpCol);
     free(mpGld);
 }
+
+/**
+ * Get the best match from the array of matches
+ */
+bool JMatchTable::getbest (
+  off_t const &azRedOrg,    // current read position on original file
+  off_t const &azRedNew,    // current read position on new file
+  off_t &azBstOrg,          // best position found on original file
+  off_t &azBstNew           // best position found on new file
+) {
+    // Re-evaluate enlarged EOB's (because they are evaluated based in iiCnt)
+    if (! mbCmpAll) {
+        // join old and new lists
+        if (mpNew != null){
+            mpLst->ipNxt = mpOld ;
+            mpOld = mpNew ;
+            mpNew = null ;
+            mpLst = null ;
+        }
+
+        // evaluate
+        bool lbBstEob = false ;
+        for (rMch * lpCur = mpOld ; lpCur != null; lpCur = lpCur->ipNxt)
+            if ((lpCur != mpBst)
+                && (lpCur->iiCmp <= CMPEOB)             // EOB ?
+                && (lpCur->izNew > lpCur->izTst)        // Enlarged ? //@flawed !
+                && (isBest(lpCur, azRedNew, 0, lpCur->izTst, lpCur->iiCmp)))
+                    lbBstEob = true ;
+
+        // recalc mzBstOrg if needed
+        if (lbBstEob && mzBstOrg == 0)
+            calcPosOrg(mpBst, mzBstOrg, mzBstNew);
+    }
+
+    // get best match
+    if (mpBst != null){
+        azBstOrg = mzBstOrg ;
+        azBstNew = mzBstNew ;
+    }
+
+    #if debug
+    if (JDebug::gbDbg[DBGMCH]){
+        if (mpBst == null){
+            fprintf(JDebug::stddbg, "Match Failure at %" PRIzd "\n", azRedNew) ;
+        } else if ((azRedNew != azBstNew)){
+            fprintf(JDebug::stddbg, "Suboptimal Match at %" PRIzd ": from %" PRIzd ", length %d\n",
+                    azRedNew, azBstNew, mpBst->iiCmp);
+        } else if ((mpBst->iiCmp < EQLSZE)) {
+            fprintf(JDebug::stddbg, "Short Match at %" PRIzd ": from %" PRIzd ", length %d\n",
+                    azRedNew, azBstNew, mpBst->iiCmp);
+        }
+    }
+    #endif
+
+     return mpBst != null ;
+} /* getbest() */
 
 /**
  * Auxiliary function: add
@@ -191,7 +251,8 @@ JMatchTable::eMatchReturn JMatchTable::add (
             // sanity check
             #if debug
             if ((mpOld != null) &&
-                (mpOld->iiCmp != -2) &&
+                (mpOld->iiCmp != CMPINV) &&     // Invalids may be reused ?
+                (mpOld->iiCmp != CMPEOB) &&     // EOB with low iiCnt may be reused ?
                 ((mpOld->iiCmp != 0 && mpOld->izNew >= azRedNew) ||
                  (mpOld->iiCmp > 0 && mpOld->izTst + mpOld->iiCmp > azRedNew)))
                     fprintf(JDebug::stddbg, "Mch Add (" P8zd ">" P8zd "<" P8zd") Reusing valid new element %d !\n",
@@ -203,13 +264,11 @@ JMatchTable::eMatchReturn JMatchTable::add (
             mpOld = mpOld->ipNxt ;
             nextold(azRedNew) ;     // prepare next old element
 
-            // remove old element from gliding/colliding lists
-            //@if (lpCur->iiCmp != -3){
-                if (lpCur->iiCnt == 1 || lpCur->iiGld == 0)
-                    delCol(lpCur) ;
-                if (lpCur->iiCnt == 1 || lpCur->iiGld != 0)
-                    delGld(lpCur) ;
-            //}
+            // remove old element from gliding & colliding lists
+            if (lpCur->iiCnt == 1 || lpCur->iiGld == 0)
+                delCol(lpCur) ;
+            if (lpCur->iiCnt == 1 || lpCur->iiGld != 0)
+                delGld(lpCur) ;
 
             // debug reporting
             #if debug
@@ -245,17 +304,17 @@ JMatchTable::eMatchReturn JMatchTable::add (
 
     // evaluate new (iiCnt==1) or skipped (iiCmp==-3) elements
     eMatchReturn liRet = Enlarged; /**< return code */
-    if ((lpCur->iiCnt == 1 || lpCur->iiCmp == -3)){
+    if ((lpCur->iiCnt == 1 || lpCur->iiCmp == CMPSKP)){
         // reactivate skipped elements
-        if (lpCur->iiCmp == -3)
+        if (lpCur->iiCmp == CMPSKP)
             lpCur->iiCmp = 0;
 
         switch (liRet = isGoodOrBest(azRedNew, lpCur)){
         case Invalid:
             if (lpCur->izTst >= lpCur->izNew){
-                // Invalids are marked -2 for reuse (if they were completely evaluated)
+                // Invalids are marked -1 for reuse (unless they were incompletely evaluated)
                 miHshRpr++ ;
-                lpCur->iiCmp = -2 ;  // mark as invalid for reuse
+                lpCur->iiCmp = CMPINV ;  // mark as invalid for reusen
 
                 // put new invalid elements in front of the new list to be reused
                 if (lpCur->iiCnt == 1) {
@@ -267,7 +326,7 @@ JMatchTable::eMatchReturn JMatchTable::add (
 
                 break ;
             }
-            // Invalids that were not fully evaluated are treaded like valids, so no break
+            // Invalids that were not fully evaluated are treated like valids, so no break
         case Valid:
         case Good:
         case Best:
@@ -301,82 +360,6 @@ JMatchTable::eMatchReturn JMatchTable::add (
 } /* add() */
 
 /**
-* @brief Prepare next reusable old element
-* @return true=found, false=notfound
-*/
-bool JMatchTable::nextold(off_t const azRedNew){
-    rMch * lpCur ;  /* current element */
-
-    // find first old item on old list
-    while (mpOld != null)
-        if ((mpOld->iiCmp <= -2))
-            break ; // skipped or marked invalid elemnts
-//        else if (mpOld->izNew < lzLmt && mpOld->izTst + mpOld->iiCmp < lzLmt)
-//            break ; // valid but not useful anymore
-//        else if (mpOld->iiCmp <= 0 && mpOld->izNew - miRlb < lzLmt)
-//            break ; // reuse invalid items
-        else if ((mpOld->izNew >= mzOld) ||
-                    (mpOld->iiCmp > 0 && mpOld->izTst + mpOld->iiCmp >= mzOld) ||
-                    (mpOld->iiCmp >= EQLMAX && mpOld->izTst + mpOld->iiCmp + miRlb > mzOld)) {
-            // not an old item: remove from oldlist
-            lpCur = mpOld ;
-            mpOld = mpOld->ipNxt ;
-
-            // add to newlist ;
-            addNew(lpCur);
-        } else {
-            break ;
-        }
-
-    // reuse new invalid items (marked with iiCmp == -2)
-    if (mpOld == null && mpNew != null){
-        mpLst->ipNxt = null ;
-        if (mpNew->iiCmp <= -2){
-            // Remove from new list
-            lpCur = mpNew ;
-            mpNew = mpNew->ipNxt ;
-
-            // Move to old list
-            lpCur->ipNxt = mpOld ;
-            mpOld = lpCur ;
-
-        }
-    }
-
-    // debug-verify
-    #if debug
-    if (JDebug::gbDbg[DBGMCH]){
-        if (mpOld != null){
-            off_t lzChkNew = azRedNew ;
-            off_t lzChkOrg = (mpOld->iiGld > 0) ? mpOld->izOrg : lzChkNew + mpOld->izDlt ;
-            int liCmp = check(lzChkOrg, lzChkNew, 32) ;
-            if (liCmp > 0){
-                fprintf(JDebug::stddbg, "Mch Nxt Err @%" PRIzd
-                        " for %" PRIzd ">%" PRIzd "<%" PRIzd "~%" PRIzd "/%d"
-                        " cnt=%d cmp@%" PRIzd "=%d chk=%d is not invalid !\n",
-                        azRedNew, lzChkOrg, mpOld->izDlt, lzChkNew, mpOld->izBeg, mpOld->iiGld,
-                        mpOld->iiCnt, mpOld->izTst, mpOld->iiCmp, liCmp) ;
-                liCmp = 0; // for breakpoint
-            }
-        }
-    }
-    #endif
-
-    return mpOld != null ;
-}
-
-/**
-* @brief Add element to new list
-*/
-void JMatchTable::addNew(rMch *lpCur){
-    if (mpNew == null)
-        mpNew = lpCur ;
-    else
-        mpLst->ipNxt = lpCur ;
-    mpLst = lpCur ;     // attention: mpLst->ipNxt is a dangling pointer (saves one assignment) !!!
-}
-
-/**
  * @brief Cleanup, check free space and fastcheck best match.
  *
  * @param       azRedNew    Current reading position
@@ -384,7 +367,7 @@ void JMatchTable::addNew(rMch *lpCur){
  *
  * @return Full, GoodMatch or Added
  * ---------------------------------------------------------------------------*/
-JMatchTable::eMatchReturn JMatchTable::cleanup ( off_t const azBseOrg, off_t const azRedNew, int const liBck ){
+JMatchTable::eMatchReturn JMatchTable::cleanup ( off_t const azBseOrg, off_t const azRedNew){
     rMch *lpCur ;               /**< Current element from matchtable    */
 
     // get actual reliability distance
@@ -394,9 +377,9 @@ JMatchTable::eMatchReturn JMatchTable::cleanup ( off_t const azBseOrg, off_t con
     if (mpNew != null){
         mpLst->ipNxt = mpOld ;
         mpOld = mpNew ;
+        mpNew = null ;
+        mpLst = null ;
     }
-    mpNew = null ;
-    mpLst = null ;
 
     // sanity checks
     #if debug
@@ -412,24 +395,25 @@ JMatchTable::eMatchReturn JMatchTable::cleanup ( off_t const azBseOrg, off_t con
 
     // evaluate existing entries
     mpBst = null ;  // reset best pointer
-    for (lpCur = mpOld ; lpCur != null; lpCur = lpCur->ipNxt){
-//        if ((lpCur->iiCmp <= 0 && lpCur->izNew + miRlb < azRedNew) ||
-//            (lpCur->iiCmp > 0 && lpCur->izTst + lpCur->iiCmp + 2 * miRlb < azRedNew) ||
-//            (lpCur->iiCmp >= EQLMAX && lpCur->izTst + lpCur->iiCmp + 3 * miRlb < azRedNew)) {
-//            // Very old items are skipped
-//            lpCur->iiCmp = -3 ;
-//        } else {
-        if ((lpCur->izNew + miAhdMax > azRedNew) ||
-            (lpCur->iiCmp > 0 && lpCur->izTst + lpCur->iiCmp >= azRedNew + EQLMIN) ||
-            (lpCur->iiCmp >= EQLMAX && lpCur->izTst + lpCur->iiCmp >= azRedNew)){
-            isGoodOrBest(azRedNew, lpCur) ;
-        } else {
-            // Mark very old elements as skipped
-            lpCur->iiCmp = -3 ;
-        }
-    }
+    mzOld = azRedNew ;
 
-    // invalid items are not always old, so we still need to check
+    if (azBseOrg == 0)
+        // version simple
+        for (lpCur = mpOld ; lpCur != null; lpCur = lpCur->ipNxt)
+            if (isOld2Skip(lpCur, azRedNew))
+                lpCur->iiCmp = CMPSKP ;         // Mark very old elements as skipped
+            else isGoodOrBest(azRedNew, lpCur) ;
+    else
+        // version lente (+ 25% is user time)
+        for (lpCur = mpOld ; lpCur != null; lpCur = lpCur->ipNxt)
+            if (isOld2Skip(lpCur, azRedNew))
+                lpCur->iiCmp = CMPSKP ;         // Mark very old elements as skipped
+            else
+                if ((isGoodOrBest(azRedNew, lpCur) == Invalid)
+                    && (lpCur->iiGld > 0 ? lpCur->izOrg : lpCur->izNew + lpCur->izDlt) < azBseOrg)
+                        lpCur->iiCmp = CMPINV ;         // Mark obsolete elements as invalid
+
+    // prepare the oldlist
     nextold(azRedNew) ;
 
     // redo sanity checks
@@ -460,38 +444,6 @@ JMatchTable::eMatchReturn JMatchTable::cleanup ( off_t const azBseOrg, off_t con
 } /* cleanup() */
 
 /**
- * Get the best match from the array of matches
- */
-bool JMatchTable::getbest (
-  off_t const &azRedOrg,    // current read position on original file
-  off_t const &azRedNew,    // current read position on new file
-  off_t &azBstOrg,          // best position found on original file
-  off_t &azBstNew           // best position found on new file
-) {
-    // get best match
-    if (mpBst != null){
-        azBstOrg = mzBstOrg ;
-        azBstNew = mzBstNew ;
-    }
-
-    #if debug
-    if (JDebug::gbDbg[DBGMCH]){
-        if (mpBst == null){
-            fprintf(JDebug::stddbg, "Match Failure at %" PRIzd "\n", azRedNew) ;
-        } else if ((azRedNew != azBstNew)){
-            fprintf(JDebug::stddbg, "Suboptimal Match at %" PRIzd ": from %" PRIzd ", length %d\n",
-                    azRedNew, azBstNew, mpBst->iiCmp);
-        } else if ((mpBst->iiCmp < EQLSZE)) {
-            fprintf(JDebug::stddbg, "Short Match at %" PRIzd ": from %" PRIzd ", length %d\n",
-                    azRedNew, azBstNew, mpBst->iiCmp);
-        }
-    }
-    #endif
-
-    return mpBst != null ;
-} /* getbest() */
-
-/**
 * @brief Evaluate a match
 */
 JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
@@ -518,27 +470,24 @@ JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
         // The test position is still before the previous test result,
         // so reuse the previous test result.
         liCurCmp = lpCur->iiCmp ;
-        if (liCurCmp <= -2)
-            liCurCmp=0;
+        if (liCurCmp == CMPSKP || liCurCmp == CMPINV)
+            liCurCmp = 0;
         if (lbGld){
             lzTstNew = lpCur->izTst ;
             lzTstOrg = lpCur->izOrg ;
         } else {
             lzTstOrg = lzTstOrg + (lpCur->izTst - lzTstNew) ;
             lzTstNew = lpCur->izTst ;
-            lzTstOrg = lpCur->izTst + lpCur->izDlt ;
         }
-    } else if ((! lbGld) && lpCur->iiCmp > 0 && lpCur->iiCmp - (lzTstNew - lpCur->izTst) > EQLMIN) {
+    } else if ((! lbGld) && (lpCur->iiCmp > 0) && (lpCur->izTst - lzTstNew + lpCur->iiCmp > EQLMIN)) {
         // The new test position is within the previous test result.
         // Report the remaining length
-        liCurCmp = lpCur->iiCmp - (lzTstNew - lpCur->izTst) ;
-        if (liCurCmp <= -2)
-            liCurCmp=0;
+        liCurCmp = lpCur->izTst - lzTstNew + lpCur->iiCmp ;
     } else {
         // The previous test result cannot be reused: check (again)
         // determine number of bytes to check
         lzDst = lpCur->izBeg - lzTstNew ;       // at least till the first match
-        //if (mpBst != null && lzDst > mzBstNew - lzTstNew + FZY)
+        //@if (mpBst != null && lzDst > mzBstNew - lzTstNew + FZY)
         //    lzDst = mzBstNew - lzTstNew + FZY ; // no need to be better than best
         if (lzDst < MINDST)
             lzDst = MINDST ;
@@ -546,19 +495,15 @@ JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
             lzDst = MAXDST ;
 
         // check
-        liCurCmp = check(lzTstOrg, lzTstNew, lzDst, lpCur->iiGld,
+        liCurCmp = check(lzTstOrg, lzTstNew, lzDst, lbGld ? lpCur->iiGld: 0,
                          mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
 
         // store result
         lpCur->izTst = lzTstNew ;
-        if (lpCur->iiCmp == -2 && liCurCmp <= 0)
-            #if debug
-            lpCur->iiCmp = -2 // for breakpoint
-            #endif // debug
+        if (lpCur->iiCmp == CMPINV && liCurCmp <= 0)
             ; // don't erase an invalid marker
-        else {
+        else
             lpCur->iiCmp = liCurCmp ;
-        }
     }
 
     // Debug doublecheck
@@ -567,10 +512,10 @@ JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
         if (lzDst == -1){
             off_t lzChkOrg = lzTstOrg ;
             off_t lzChkNew = lzTstNew ;
-            int liChkCmp = check(lzChkOrg, lzChkNew, 0, lpCur->iiGld,
+            int liChkCmp = check(lzChkOrg, lzChkNew, 0, false,
                              mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
-            if (liChkCmp == 0 && liCurCmp == 0) ; // ok
-            else if ((liChkCmp != liCurCmp) ||
+            if ((liChkCmp == 0 && liCurCmp == 0) || (liChkCmp == -1)) ; // that's ok
+            else if ((liChkCmp != liCurCmp && lpCur->iiCmp < EQLMAX) ||
                     (lzChkOrg != lzTstOrg) ||
                     (lzChkNew != lzTstNew))
                 fprintf(JDebug::stddbg, "Mch Chk Err :%" PRIzd "=%" PRIzd "+%d "
@@ -581,112 +526,13 @@ JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
     }
     #endif // debug
 
-    // If iiCmp==EQLMAX, the test result probably extends till izNew
-    if (lpCur->iiCmp == EQLMAX && lpCur->izNew > lzTstNew + liCurCmp) {
+    // If iiCmp>=EQLMAX, the test result probably extends till izNew
+    if (lpCur->iiCmp >= EQLMAX && lpCur->izNew > lzTstNew + liCurCmp) {
         liCurCmp += lpCur->izNew - lzTstNew ;
     }
 
-    /* Handle EOB: estimate liCurCmp from hash counts */
-    //@ TODO:
-    //@ - for EOB: no solution before EOB !
-    if (liCurCmp < 0){
-        // EOB was reached, so rely on info from the hashtable: iiCnt, izBeg and izNew
-        if (liCurCnt < 0)
-            liCurCnt = (lpCur->iiGld > 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
-
-        if (lzTstNew <= lpCur->izBeg) {
-            // We're still before the first detected match,
-            // so a potential solution probably starts at given match
-            lzTstNew = lpCur->izBeg ;
-            liCurCmp = liCurCnt ;
-        } else if (lzTstNew <= lpCur->izNew) {
-            // We're in between the first and last detected match:
-            // Prorate liCurCmp, but never lower than 1
-            liCurCmp = liCurCnt * (lpCur->izNew - lzTstNew)
-                          / (lpCur->izNew - lpCur->izBeg) ;
-            if (liCurCmp <= 1)
-                liCurCmp = 1 ;
-        }
-        if (liCurCmp > 0){
-            // reduce hashtable match, real compares are better
-            //if (liCurCmp > 2)
-            liCurCmp = 1 + liCurCmp / 2 ;
-
-            // calculate corresponding lzPosOrg
-            calcPosOrg(lpCur, lzTstOrg, lzTstNew) ;
-        } else {
-            liCurCmp = -1;
-        }
-    }
-
-    /* evaluate: keep the best solution */
-    if (liCurCmp > 0){
-        if (mpBst == NULL)
-            // first one, take it
-            mpBst=lpCur ;
-        else if (liCurCmp < 2 && miBstCmp > 4)
-            // avoid using low-quality matches (liCurCmp < 2 == low quality)
-            ; // do nothing //@liCurCnt = -1 ;  // breakpoint
-        else if (miBstCmp < 2 && liCurCmp > 4)
-            // avoid using low-quality matches (liBstCmp < 2 == low quality)
-            mpBst=lpCur ;
-        else if (lzTstNew + FZY < mzBstNew)
-            // new one is clearly better (nearer)
-            mpBst=lpCur ;
-        else if (lzTstNew <= mzBstNew + FZY) {
-            // maybe better (nearer): check in more detail
-            if (lzTstNew - liCurCmp < mzBstNew - miBstCmp) {
-                // new one is longer
-                mpBst=lpCur ;
-            } else if (lzTstNew - liCurCmp == mzBstNew - miBstCmp) {
-                // If all else is equal, then rely on the hash counter
-                if (liCurCnt < 0)
-                    liCurCnt = (lpCur->iiGld > 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
-                int liBstCnt = (mpBst->iiGld > 0) ? mpBst->iiCnt / 2 : mpBst->iiCnt ;
-                if (liCurCnt > liBstCnt)
-                    // higher hash-match counter = probably longer
-                    mpBst=lpCur ;
-            }
-        }
-
-        if (mpBst==lpCur){
-            mzBstNew = lzTstNew ;
-            mzBstOrg = lzTstOrg ;
-            miBstCmp = liCurCmp ;
-
-            // Determine the limit for being old:
-            // - current mpBst runs till izTst + iiCmp, so all matches before this point are useless
-            // - except if a new mpBst is found that is earlier but shorter
-            // - therefore, miRlb is used as safety range
-            mzOld = mpBst->izTst + mpBst->iiCmp - miRlb ;
-            if (mzOld < azRedNew)
-                mzOld = azRedNew ;
-        }
-    } /* if liCurCmp > 0 */
-
-    // debug feedback
-    #if debug
-    if (JDebug::gbDbg[DBGMCH]){
-        fprintf(JDebug::stddbg,
-            "%s %5d %c [%2d:" P8zd ">" P8zd "<" P8zd "~" P8zd "#%4d:" P8zd "+%4d] "
-            "bse=%" PRIzd " dst=%" PRIzd " fnd=%" PRIzd "=%" PRIzd "(%d)\n",
-            (liCurCmp != 0) ? "Val" : (lpCur->izNew < azRedNew) ? "Old" : "Inv",
-            liCurCmp, (mpBst == lpCur)?'*':' ',
-            lpCur->iiGld,
-            lpCur->izOrg, lpCur->izDlt, lpCur->izBeg, lpCur->izNew,
-            lpCur->iiCnt, lpCur->izTst, lpCur->iiCmp,
-            azRedNew, lzDst, lzTstOrg, lzTstNew, lzTstNew - azRedNew) ;
-
-        // Measure old distance
-        static long llOldMax = 0;
-        if (liCurCmp > 0){
-            if (azRedNew - lpCur->izNew > llOldMax){
-                llOldMax = azRedNew - lpCur->izNew ;
-                fprintf(JDebug::stddbg, "Mch Old Max Distance = %ld\n", llOldMax) ;
-            }
-        }
-    }
-    #endif
+    // evaluate: keep the best solution
+    isBest(lpCur, azRedNew, lzTstOrg, lzTstNew, liCurCmp, liCurCnt) ;
 
     if (liCurCmp == 0)
         return Invalid ;
@@ -699,6 +545,235 @@ JMatchTable::eMatchReturn JMatchTable::isGoodOrBest(
     else
         return Valid ;
 } /* isGoodOrBest */
+
+/**
+* @brief Check if given solution is the best one.
+*/
+bool JMatchTable::isBest(rMch * const lpCur, off_t azRedNew, off_t lzTstOrg, off_t lzTstNew,
+    int liCurCmp, int liCurCnt
+) {
+    /* Evaluate potential of EOB matches */
+    if (liCurCmp <= CMPEOB){
+        // EOB was reached, so rely on info from the hashtable: iiCnt, izBeg and izNew
+        if (liCurCnt < 0)
+            liCurCnt = (lpCur->iiGld > 0) ? 1 + lpCur->iiCnt / 2 : lpCur->iiCnt ;
+
+        if (lzTstNew <= lpCur->izBeg) {
+            // We're still before the first detected match,
+            // so a potential solution probably starts at given match
+            liCurCmp = liCurCnt ;
+            lzTstNew = lpCur->izBeg ;
+            lzTstOrg = lpCur->izOrg ;
+        } else if (lzTstNew <= lpCur->izNew + miRlb) {
+            // We're in between the first and last detected match:
+            // Estimate the number of bytes needed to reach an equality.
+            liCurCmp = liCurCnt  ;
+            off_t lzDst = 1 + (lpCur->izNew - lpCur->izBeg) / liCurCnt / (miRlb / 16);
+            lzTstNew += lzDst ;
+            lzTstOrg += lzDst ;
+        } else {
+            // The match is aging, reduce iiCnt by its age and estimate the distance to an equality
+            liCurCmp = liCurCnt - 1 - (lzTstNew - lpCur->izNew) / (miRlb / 8);
+            off_t lzDst = liCurCnt - liCurCmp ;
+            lzTstNew += lzDst ;
+            lzTstOrg += lzDst ;
+        }
+        if (liCurCmp < 1)
+            liCurCmp = 1 ;  // something may be there, better than nothing
+        else
+            liCurCmp = 1 + min(EQLMAX, liCurCmp) / 2 ;   // reduce hashtable match, real compares are better
+
+        // store result for isOld functions, negate to indicate EOB
+        if (liCurCmp > 3){
+            lpCur->iiCmp = - liCurCmp ;
+        }
+    }
+
+    /* Elect the best one */
+    if (liCurCmp > 0){
+        if (mpBst == NULL)
+            mpBst=lpCur ;   // first one, take it
+        else if (liCurCmp < 2 && miBstCmp > 4)
+            ; // do nothing to avoid using low-quality matches (liCurCmp < 2 == low quality)
+        else if (miBstCmp < 2 && liCurCmp > 4)
+            mpBst=lpCur ;   // avoid using low-quality matches (liBstCmp < 2 == low quality)
+        else if (lzTstNew + FZY < mzBstNew)
+            mpBst=lpCur ;   // new one is clearly better (nearer)
+        else if (lzTstNew <= mzBstNew + FZY) {
+            // maybe better (nearer): check in more detail
+            if (lzTstNew - liCurCmp < mzBstNew - miBstCmp) {
+                mpBst=lpCur ;   // new one is longer
+            } else if (lzTstNew - liCurCmp == mzBstNew - miBstCmp) {
+                // If all else is equal, then rely on the hash counter
+                if (liCurCnt < 0)
+                    liCurCnt = (lpCur->iiGld > 0) ? lpCur->iiCnt / 2 : lpCur->iiCnt ;
+                int liBstCnt = (mpBst->iiGld > 0) ? mpBst->iiCnt / 2 : mpBst->iiCnt ;
+                if (liCurCnt > liBstCnt)
+                    mpBst=lpCur ;   // higher hash-match counter = probably longer
+            }
+        }
+
+        if (mpBst==lpCur){
+            mzBstNew = lzTstNew ;
+            mzBstOrg = lzTstOrg ;
+            miBstCmp = liCurCmp ;
+
+            // Determine the limit for being old:
+            // - current mpBst runs till izTst + iiCmp, so all matches before this point are useless
+            // - except if a new mpBst is found that is earlier but shorter
+            // - therefore, miRlb is used as safety range
+            mzOld = mpBst->izTst + min(0, mpBst->iiCmp) - miRlb ;
+            if (mzOld < azRedNew)
+                mzOld = azRedNew ;
+        }
+    } /* if liCurCmp > 0 */
+
+    // debug feedback
+    #if debug
+    if (JDebug::gbDbg[DBGMCH]){
+        fprintf(JDebug::stddbg,
+            "%s %5d %c [%2d:" P8zd ">" P8zd "<" P8zd "~" P8zd "#%4d:" P8zd "+%4d] "
+            "bse=%" PRIzd " fnd=%" PRIzd "=%" PRIzd "(%d)\n",
+            (liCurCmp > 0) ? "Val" : (lpCur->izNew < azRedNew) ? "Old" : "Inv",
+            liCurCmp, (mpBst == lpCur)?'*':' ',
+            lpCur->iiGld,
+            lpCur->izOrg, lpCur->izDlt, lpCur->izBeg, lpCur->izNew,
+            lpCur->iiCnt, lpCur->izTst, lpCur->iiCmp,
+            azRedNew, lzTstOrg, lzTstNew, lzTstNew - azRedNew) ;
+
+        // Measure old distance
+        static long llOldMax = 0;
+        if (liCurCmp > 0){
+            if (azRedNew - lpCur->izNew > llOldMax){
+                llOldMax = azRedNew - lpCur->izNew ;
+                fprintf(JDebug::stddbg, "Mch Old Max Distance = %ld\n", llOldMax) ;
+            }
+        }
+    }
+    #endif
+
+    return mpBst == lpCur  ;
+} /* isBest */
+
+/**
+* @brief Prepare next reusable old element
+* @return true=found, false=notfound
+*/
+bool JMatchTable::nextold(off_t const azRedNew){
+    rMch * lpCur ;  /* current element */
+
+    #if debug
+    lpCur = mpOld ;
+    #endif
+
+    // find first old item on old list
+    while (mpOld != null)
+        if (isOld2Reuse(mpOld, azRedNew))
+            break ;
+        else {
+            // not an old item: remove from oldlist
+            lpCur = mpOld ;
+            mpOld = mpOld->ipNxt ;
+
+            // add to newlist ;
+            addNew(lpCur);
+        }
+
+    // reuse new invalid items (marked with iiCmp == -2)
+    if (mpOld == null && mpNew != null){
+        mpLst->ipNxt = null ;
+        if (mpNew->iiCmp == CMPINV){
+            // Remove from new list
+            lpCur = mpNew ;
+            mpNew = mpNew->ipNxt ;
+
+            // Move to old list
+            lpCur->ipNxt = mpOld ;
+            mpOld = lpCur ;
+        }
+    }
+
+    // debug-verify
+    #if debug
+    if (JDebug::gbDbg[DBGMCH]){
+        if (mpOld != null){
+            off_t lzChkNew = azRedNew ;
+            off_t lzChkOrg = (mpOld->iiGld > 0) ? mpOld->izOrg : lzChkNew + mpOld->izDlt ;
+            int liCmp = check(lzChkOrg, lzChkNew, 32, false, mbCmpAll ? JFile::HardAhead : JFile::SoftAhead) ;
+            if (liCmp > 0){
+                fprintf(JDebug::stddbg,
+                        "Mch Nxt Err [%2d:" P8zd ">" P8zd "<" P8zd "~" P8zd "#%4d:" P8zd "+%4d]"
+                        " bse=%" PRIzd " tst:%" PRIzd "-%" PRIzd "(%d)=%d is not invalid !\n",
+                        mpOld->iiGld, mpOld->izOrg, mpOld->izDlt, mpOld->izBeg, mpOld->izNew,
+                        mpOld->iiCnt, mpOld->izTst, mpOld->iiCmp,
+                        azRedNew, lzChkOrg, lzChkNew, (int) (lzChkNew - azRedNew), liCmp) ;
+                liCmp = 0; // for breakpoint
+            }
+        }
+    }
+    #endif
+
+    return mpOld != null ;
+}
+
+/**
+* @brief Check if a match can be skipped (iiCmp==-3)
+*
+* Skipping is done purely for performance reason and reduces accuracy.
+* We're only skipping when the probability of a valid match is really low.
+* Skipped matches can be reactivated by a new match from the hashtable.
+*/
+bool JMatchTable::isOld2Skip(rMch const * const lpCur, off_t const azRedNew){
+    switch (lpCur->iiCmp){
+        case 0:
+            return ((lpCur->izNew + 2 * miRlb < azRedNew)) ;
+        case CMPSKP:
+            return true ;
+        case CMPINV:
+            return (lpCur->iiCnt == 1 || lpCur->izNew < lpCur->izTst || lpCur->izNew < azRedNew) ;
+        case EQLMAX:
+            return false ;  // always check this one out !
+        case CMPEOB:
+        default:
+            return ((lpCur->izNew + 2 * miRlb < azRedNew)
+                    && (lpCur->izTst + abs(lpCur->iiCmp) + 2 * miRlb < azRedNew)) ;
+    }
+
+//    return (((lpCur->iiCmp > 0) || (lpCur->iiCmp < CMPEOB))
+//            && ((lpCur->izNew + miRlb < azRedNew) || (lpCur->izTst + abs(lpCur->iiCmp) + miRlb < azRedNew)))
+//        || ((lpCur->iiCmp == 0) && ((lpCur->izNew + miRlb < azRedNew)))
+//        || ((lpCur->iiCmp == CMPSKP)) ||
+//            || (lpCur->izTst
+
+//    return  ((lpCur->izNew + miAhdMax <= azRedNew)             // very old, and either
+//            &&  (lpCur->iiCmp == 0                              // - invalid
+//                || lpCur->iiCmp == CMPSKP                       // - already skipped before
+//                || lpCur->iiCmp == CMPINV                       // - new invalid
+//                || lpCur->izTst + abs(lpCur->iiCmp) < azRedNew  // - old valid
+//            )) ;
+}
+
+/**
+* @brief Check if a match can be reused (deleted)
+*
+* Matches are never deleted but instead reused (overwritten) by new matches.
+* The matchtable is "full" when no more matches can be reused.
+* If the matchtable is full, searching must stop, which is bad.
+* Reusing (overwriting) a still usable match however is also bad.
+*
+* A match is considered still usable if may contain information beyond the current best match.
+* This is flawed, because a next best match may be shorter than the current.
+* So reusing valid matches is risky but necessary to maximize the search.
+*/
+bool JMatchTable::isOld2Reuse(rMch const * const lpCur, off_t const azRedNew){
+    return  ((lpCur->iiCmp == CMPSKP)       // skipped, so already very old
+            ||  (lpCur->iiCmp == CMPINV)    // new invalids make room for other news
+            ||  (lpCur->iiCmp == CMPEOB  && lpCur->iiCnt == 1 && lpCur != mpBst) // eob's with low iiCnt
+            ||  ((lpCur->izNew < mzOld)  // or old w.r.t. mpBst
+                &&  ((lpCur->iiCmp == 0)    // and not useful or
+                     || (lpCur->izTst + abs(lpCur->iiCmp) < mzOld))) // no useful info beyond mpBst
+            ) ;
+}
 
 /**
 * @brief   Calculate position on original file corresponding to given new file position.
@@ -802,12 +877,23 @@ int JMatchTable::check (
         return liEql ;
     } else if (lcOrg == EOB || lcNew == EOB){
         // EOB reached
-        return -1  ;
+        return CMPEOB  ;
     } else {
         // No equal bytes found
         return 0 ;
     }
 } /* check() */
+
+/**
+* @brief Add element to the newlist
+*/
+void JMatchTable::addNew(rMch *lpCur){
+    if (mpNew == null)
+        mpNew = lpCur ;
+    else
+        mpLst->ipNxt = lpCur ;
+    mpLst = lpCur ;     // attention: mpLst->ipNxt is a dangling pointer (saves one assignment) !!!
+}
 
 /**
 * @brief    Delete element from gliding hashtable

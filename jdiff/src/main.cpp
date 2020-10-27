@@ -121,25 +121,29 @@
  * joheirba  v0.8.3a  July 2020 improved progress feedback
  *                              use getopts_long for option processing
  *                              index tablke in mb, search for nearest lower prime with isPrime
- * joheirba  v0.8.3b  July 2020 tweak JDiff.ufFndAhd.liMax for longer searches
- * joheirba  v0.8.3g  July 2020 JMatchTable::get refactoring
- * joheirba  v0.8.3h  Aug  2020 hash: use liEql to improve quality of hashes
- * joheirba  v0.8.3i  Aug  2020 JDiff review lookahead reset logic
- * joheirba  v0.8.3k-o Aug 2020 Review matching table logic
- * joheirba  v0.8.3p   Aug 2020 Reduce control bytes to patch file (default ops)
- * joheirba  v0.8.3q   Aug 2020 Refactored hash function: liEql logic included
- * joheirba  v0.8.3r   Aug 2020 Dynamic matching table.
- * joheirba  v0.8.3s   Aug 2020 Allow standard input with "-"
- * joheirba  v0.8.3s   Aug 2020 Option -s for stdio instead of istream
- * joheirba  v0.8.3t   Aug 2020 Integration of jpatch with JFile.getbuf
+ * joheirba  v083b    July 2020 tweak JDiff.ufFndAhd.liMax for longer searches
+ * joheirba  v083g    July 2020 JMatchTable::get refactoring
+ * joheirba  v083h     Aug 2020 hash: use liEql to improve quality of hashes
+ * joheirba  v083i     Aug 2020 JDiff review lookahead reset logic
+ * joheirba  v083k-o   Aug 2020 Review matching table logic
+ * joheirba  v083p     Aug 2020 Reduce control bytes to patch file (default ops)
+ * joheirba  v083q     Aug 2020 Refactored hash function: liEql logic included
+ * joheirba  v083r     Aug 2020 Dynamic matching table.
+ * joheirba  v083s     Aug 2020 Allow standard input with "-"
+ * joheirba  v083s     Aug 2020 Option -s for stdio instead of istream
+ * joheirba  v083t     Aug 2020 Integration of jpatch with JFile.getbuf
  *                              Refactoring JFileIStreamAhead
- * joheirba  v0.8.3z   Aug 2020 Review matchtable logic for non-compared matched
- * joheirba  v0.8.4b   Sep 2020 Review hash-reinitialization for incremental scanning
- * joheirba  v0.8.4c   Sep 2020 Finalize release of intermediate version
- * joheirba  v0.8.5a   Sep 2020 Revised buffer logic for sequential files
- * joheirba  v0.8.5b   Sep 2020 Removed unbuffered JFileIStream implementation
- * joheirba  v0.8.5d   Oct 2020 Deduplication feature (experimental)
- * joheirba  v0.8.5e   Oct 2020 Reduce compares (check): reuse negative results
+ * joheirba  v083z     Aug 2020 Review matchtable logic for non-compared matched
+ * joheirba  v084b     Sep 2020 Review hash-reinitialization for incremental scanning
+ * joheirba  v084c     Sep 2020 Finalize release of intermediate version
+ * joheirba  v085a     Sep 2020 Revised buffer logic for sequential files
+ * joheirba  v085b     Sep 2020 Removed unbuffered JFileIStream implementation
+ * joheirba  v085d     Oct 2020 Deduplication feature (experimental)
+ * joheirba  v085e-k   Oct 2020 Reduce compares (check): reuse negative results, less cleanup
+ * joheirba  v085l-r   Oct 2020 Improve gliding match detection
+ * joheirba  v085s-z   Oct 2020 Replace freelist by new&old-lists
+ * joheirba  v085aa-al Oct 2020 Tuning min and max distances and skip-checks
+ * joheirba  v085am-aw Oct 2020 Incremental search
  *
  *******************************************************************************/
 
@@ -150,14 +154,14 @@
   * 07-2020  083?   Differentiate between src/dst out-of-buffer compares for -p/-q
   * 07-2020  083r   Allow stdin as src/dst file
   * 07-2020  083?   Check hashtable dist with -p/-q/-ff
-  * 07-2020         JDiff::ufFndAhd count existing matches and new colliding matches
+  * 07-2020  drop   JDiff::ufFndAhd count existing matches and new colliding matches
   * 07-2020  083x   Align buffered reads on block boundaries ?
   * 07-2020  083l   Assure that lookahead search advances at least half a buffer
   * 07-2020  083?   ufFndAhd: reduce liMax to azAhdMax ?
-  * 08-2020         JMatchTable::get : improve performance by prechecking
-  * 08-2020         JMatchTable::get : consider length of jump (2+x offsett bytes)
+  * 08-2020  done   JMatchTable::get : improve performance by prechecking
+  * 08-2020  drop   JMatchTable::get : consider length of jump (2+x offsett bytes)
   * 08-2020  083?   Improve gliding match logic to handle skips
-  * 08-2020         Drop azPos arguments from output routines
+  * 08-2020  drop   Drop azPos arguments from output routines
   * 08-2020         Refactor hashtable to structure
   * 08-2020  083q   Refactor get_outofbuffer
   * 08-2020  083l   Remove panic from ufFndAhd (introduced liFre)
@@ -274,7 +278,8 @@ int main(int aiArgCnt, char *acArg[])
     int liMchMax = 128 ;          /**< Maximum entries in matching table.               */
     int liMchMin = 2 ;            /**< Minimum entries in matching table.               */
     int liHshMbt = 32 ;           /**< Hashtable size in MB (* 1024 * 1024)             */
-    long llBufSze = 2 ;           /**< Default file-buffers size in MB                  */
+    long llBufOrg = 0 ;           /**< Default source-file buffer in MB                 */
+    long llBufNew = 0 ;           /**< Default destin-file buffer in MB                 */
     int liBlkSze = 32*1024 ;      /**< Default block size (in bytes)                    */
     int liAhdMax = 0;             /**< Lookahead range (0=same as llBufSze)             */
     int liHlp=0;                  /**< -h/--help flag: 0=no, 1=-h, 2=-hh, 3=error       */
@@ -313,19 +318,25 @@ int main(int aiArgCnt, char *acArg[])
             lbCmpAll = true ;         // verify all hashtable matches
             lbSrcBkt = true;          // allow going back on source file
             liSrcScn = 1 ;            // create full index on source file
-            llBufSze *= 4 ;           // larger buffer (more soft-ahead searching)
             liMchMin *= 2 ;           // increase minimum number of matches to search
             liMchMax *= 4 ;           // increase maximum number of matches to search
             liHshMbt *= 4 ;           // Increase index table size
+
+            // larger buffers (more soft-ahead searching)
+            llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 4 ;
+            llBufNew = (llBufNew <= 0 ? 1 : llBufNew) * 4 ;
             break;
         case 'f': // faster (or rather: lazier)
             if (lbCmpAll) {
                 lbCmpAll = false ;      // No compares out-of-buffer (only verify hashtable matches when data is available in memory buffers)
-                llBufSze *= 16 ;        // increase buffer size to have more lookahead indexing
                 lbSrcBkt = true ;
                 liSrcScn = 1  ;
                 liMchMin *= 2 ;
                 liMchMax /= 2 ;
+
+                // increase buffer size to have more lookahead indexing
+                llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 16 ;
+                llBufNew = (llBufOrg <= 0 ? 1 : llBufNew) * 16 ;
             } else {
                 // even faster (lazier)
                 liSrcScn = 0 ;          // No indexing scan, indexing is limited ookahead search
@@ -335,12 +346,16 @@ int main(int aiArgCnt, char *acArg[])
             liHshMbt /= 2 ;             // Reduce index table by 2
             break;
         case 'p': // sequential source file
+            if (llBufOrg < 32)
+                llBufOrg = 32 ;           // larger buffer (more soft-ahead searching)
             lbSeqOrg = true ;
             lbCmpAll = false ;            // only compare data within the buffer
             lbSrcBkt = false ;            // only backtrack on source file in buffer
             liSrcScn = 0;                 // no pre-scan indexing
             break;
         case 'q': // sequential destination file
+            if (llBufNew < 16)
+                llBufNew = 16 ;           // larger buffer (more soft-ahead searching)
             lbSeqNew = true ;
             liMchMin = 0;                 // only search within the buffer
             break;
@@ -408,9 +423,11 @@ int main(int aiArgCnt, char *acArg[])
             }
             break;
         case 'm': // "buffer-size",       required_argument
-            llBufSze = atoi(optarg) ;
-            if (llBufSze < 0)
-                llBufSze=2; /* on error, switch to default */
+            llBufNew = atoi(optarg) ;
+            if (llBufNew < 0)
+                llBufNew=0;             // on error, switch to default
+            if (llBufOrg == 0)
+                llBufOrg = llBufNew ;   // first -m specifies source and destination buffer
             break;
         case 'n': // "search-min",        required_argument
             liMchMin = atoi(optarg) ;
@@ -599,27 +616,27 @@ int main(int aiArgCnt, char *acArg[])
     }
 
     /* Verify and process parameters, convet MB in bytes etc... */
-    llBufSze *= 1024 * 1024 / 2 ; // divide by two because we need two buffers
+    llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 1024 * 1024 ;
+    llBufNew = (llBufNew <= 0 ? 1 : llBufNew) * 1024 * 1024 ;
 
     // Buffer size cannot be zero and must be aligned on block size
     // Block size  cannot be larger than buffer size
-    if (llBufSze == 0) {
-        fprintf(JDebug::stddbg, "\nWarning: Buffer size cannot be zero, set to %d.\n", liBlkSze);
-        llBufSze = liBlkSze ;
+    if (llBufOrg % liBlkSze != 0){
+        llBufOrg -= llBufOrg % liBlkSze ;
+        if (llBufOrg <= 0)
+            llBufOrg = liBlkSze;
+        fprintf(JDebug::stddbg, "Warning: Source buffer size misaligned with block size: set to %ld.\n", llBufOrg);
     }
-    if (llBufSze % liBlkSze != 0){
-        llBufSze -= llBufSze % liBlkSze ;
-        if (llBufSze == 0){
-            llBufSze = liBlkSze;
-        }
-        fprintf(JDebug::stddbg, "Warning: Buffer size misaligned with block size: set to %ld.\n", llBufSze);
+    if (llBufNew % liBlkSze != 0){
+        llBufNew -= llBufNew % liBlkSze ;
+        if (llBufNew <= 0)
+            llBufNew = liBlkSze;
+        fprintf(JDebug::stddbg, "Warning: Destination buffer size misaligned with block size: set to %ld.\n", llBufNew);
     }
 
     // Default search ahead window
     if (liAhdMax==0){
-//        liAhdMax = llBufSze / 2 ;
-//        if (llBufSze - liAhdMax < liBlkSze)
-            liAhdMax = llBufSze - liBlkSze ;
+        liAhdMax = llBufNew - liBlkSze ;
         if (liAhdMax < 4096)
             liAhdMax = 4096 ;
     }
@@ -648,11 +665,11 @@ int main(int aiArgCnt, char *acArg[])
             #endif // __WIN32__
 
             // create a JFile
-            lpJflOrg = new JFileAheadStdio(stdin, "Org", llBufSze, liBlkSze, lbSeqOrg);
+            lpJflOrg = new JFileAheadStdio(stdin, "Org", llBufOrg, liBlkSze, lbSeqOrg);
         } else {
             lfFilOrg = jfopen(lcFilNamOrg, "rb") ;
             if (lfFilOrg != NULL) {
-                lpJflOrg = new JFileAheadStdio(lfFilOrg, "Org", llBufSze, liBlkSze, lbSeqOrg);
+                lpJflOrg = new JFileAheadStdio(lfFilOrg, "Org", llBufOrg, liBlkSze, lbSeqOrg);
             }
         }
 
@@ -666,14 +683,14 @@ int main(int aiArgCnt, char *acArg[])
             #endif // __WIN32__
 
             // create a JFile
-            lpJflNew = new JFileAheadStdio(stdin, "New", llBufSze, liBlkSze, lbSeqNew);
+            lpJflNew = new JFileAheadStdio(stdin, "New", llBufNew, liBlkSze, lbSeqNew);
         } else {
             if (liFun == Dedup)
                 lfFilNew = jfopen(lcFilNamNew, "r+b") ;
             else
                 lfFilNew = jfopen(lcFilNamNew, "rb") ;
             if (lfFilNew != NULL) {
-                lpJflNew = new JFileAheadStdio(lfFilNew, "New", llBufSze, liBlkSze, lbSeqNew);
+                lpJflNew = new JFileAheadStdio(lfFilNew, "New", llBufNew, liBlkSze, lbSeqNew);
             }
         }
     }
@@ -692,11 +709,11 @@ int main(int aiArgCnt, char *acArg[])
             #endif // __WIN32__
 
             // create a JFile
-            lpJflOrg = new JFileAheadIStream(cin, "Org",  llBufSze, liBlkSze, lbSeqOrg);
+            lpJflOrg = new JFileAheadIStream(cin, "Org",  llBufOrg, liBlkSze, lbSeqOrg);
         } else {
             loSrmOrg.open(lcFilNamOrg, ios_base::in | ios_base::binary) ;
             if (loSrmOrg.is_open()) {
-                lpJflOrg = new JFileAheadIStream(loSrmOrg, "Org",  llBufSze, liBlkSze, lbSeqOrg);
+                lpJflOrg = new JFileAheadIStream(loSrmOrg, "Org",  llBufOrg, liBlkSze, lbSeqOrg);
             }
         }
 
@@ -710,12 +727,12 @@ int main(int aiArgCnt, char *acArg[])
             #endif // __WIN32__
 
             // create a JFile
-            lpJflNew = new JFileAheadIStream(cin, "New",  llBufSze, liBlkSze, lbSeqNew);
+            lpJflNew = new JFileAheadIStream(cin, "New",  llBufNew, liBlkSze, lbSeqNew);
         } else {
             loSrmNew.open(lcFilNamNew, ios_base::in | ios_base::binary) ;
 
             if (loSrmNew.is_open()) {
-                lpJflNew = new JFileAheadIStream(loSrmNew, "New",  llBufSze, liBlkSze, lbSeqNew);
+                lpJflNew = new JFileAheadIStream(loSrmNew, "New",  llBufNew, liBlkSze, lbSeqNew);
             }
         }
     }
@@ -806,7 +823,7 @@ int main(int aiArgCnt, char *acArg[])
                     ((loJDiff.getHsh()->get_hashsize() + 512) / 1024 + 512) / 1024,
                     loJDiff.getHsh()->get_hashprime()) ;
             fprintf(JDebug::stddbg, "Search size     (0 = buffersize) (-a): %dkb\n",  liAhdMax / 1024 );
-            fprintf(JDebug::stddbg, "Buffer size       (default  2Mb) (-m): 2 x %ldMb\n", llBufSze / 1024 / 1024);
+            fprintf(JDebug::stddbg, "Buffer size       (default  2Mb) (-m): %ldMb\n", (llBufOrg + llBufNew) / 1024 / 1024);
             fprintf(JDebug::stddbg, "Block  size       (default 32kb) (-b): %dkb\n",  liBlkSze / 1024);
             fprintf(JDebug::stddbg, "Min number of matches to search  (-n): %d\n", liMchMin);
             fprintf(JDebug::stddbg, "Max number of matches to search  (-x): %d\n", liMchMax);

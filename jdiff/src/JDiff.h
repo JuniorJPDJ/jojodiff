@@ -262,16 +262,16 @@ private:
     int  miSrcScn;          /* Prescan original file: 0=no, 1=yes, 2=done */
 
     /* Search-ahead state */
-	off_t mzAhdOrg;        // Current ahead position on original file
-	off_t mzAhdNew;        // Current ahead position on new file
-	hkey mlHshOrg;         // Current hash value for original file
-	hkey mlHshNew;         // Current hash value for new file
-	int miValOrg;          // Current  file value
-	int miPrvOrg;          // Previous file value
-	int miValNew;          // Current  file value
-	int miPrvNew;          // Previous file value
-	int miEqlOrg;          // Indicator for equal bytes in current sample
-	int miEqlNew;          // Indicator for equal bytes in current sample
+	off_t mzAhdOrg=0;        // Current ahead position on original file
+	off_t mzAhdNew=0;        // Current ahead position on new file
+	hkey mlHshOrg=0;         // Current hash value for original file
+	hkey mlHshNew=0;         // Current hash value for new file
+	//@int miValOrg=0;          // Current  file value
+	int miPrvOrg=0;          // Previous file value
+	int miValNew=0;          // Current  file value
+	int miPrvNew=0;          // Previous file value
+	int miEqlOrg=0;          // Indicator for equal bytes in current sample
+	int miEqlNew=0;          // Indicator for equal bytes in current sample
 
     /*
      * Statistics about operations

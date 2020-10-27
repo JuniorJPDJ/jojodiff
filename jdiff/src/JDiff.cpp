@@ -53,10 +53,14 @@
  * There are two reasons for creating a matching table on top of the hashtable:
  * - The hashtable may only contain a (small) percentage of all samples, hence
  *   the nearest equal region is not always detected first.
- * - Samples are considered equal when their hash-keys are equal (in fact there's only
- *   1/256 chance that samples are really equal of their hash-keys match).
+ * - Samples are not always equal when their hash-keys are equal:
+ *   In theory, there's only 1/2^(7*SMPSZE) chance that samples are really equal
+ *   when their hash-keys match. In practice, it will be a lot higher unless source
+ *   and destination files both contain random data.
  *
- * Method buildFullIndex scans the left file and creates the hash table.
+ * For explication of the hash function, see JHashPos.h
+ *
+ * Method buildFullIndex scans the source file and creates the hash table.
  *
  *******************************************************************************/
 #include "JDefs.h"
@@ -114,10 +118,7 @@ JDiff::JDiff(
     miMchMax(aiMchMax),
     miMchMin(aiMchMin > miMchMax ? miMchMax - 1 : aiMchMin),
     miAhdMax(aiAhdMax<1024?1024:aiAhdMax),
-    mbCmpAll(abCmpAll), miSrcScn(aiSrcScn),
-    mzAhdOrg(0), mzAhdNew(0), mlHshOrg(0), mlHshNew(0),
-    miValOrg(0), miPrvOrg(0), miValNew(0), miPrvNew(0),
-    miEqlOrg(0), miEqlNew(0), miHshErr(0)
+    mbCmpAll(abCmpAll), miSrcScn(aiSrcScn)
 {
 	gpHsh = new JHashPos(aiHshSze) ;
 	gpMch = new JMatchTable(gpHsh, mpFilOrg, mpFilNew, aiMchMax, abCmpAll, aiAhdMax);
@@ -160,15 +161,18 @@ int JDiff::jdiff()
     off_t lzAhd=0;          /**< number of bytes to advance on both files to reach the solution */
     off_t lzSkpOrg=0;       /**< number of bytes to skip on original file to reach the solution */
     off_t lzSkpNew=0;       /**< number of bytes to skip on new      file to reach the solution */
-    off_t lzLapSml=0;       /**< lap for reducing number of progress messages for -vv           */
+    off_t lzLapSml=MAX_OFF_T; /**< lap for reducing number of progress messages for -vv           */
 
     if (miVerbse > 0) {
       fprintf(JDebug::stddbg, "Comparing : ...           ");
+      if (miVerbse > 1)
+        lzLapSml = PGSMRK ;
     }
 
     /* Take one byte from each file ... */
     lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
     lcNew = mpFilNew->get(lzPosNew, JFile::Read);
+
     while (lcNew >= 0) {
         #if debug
         if (JDebug::gbDbg[DBGPRG])
@@ -176,26 +180,45 @@ int JDiff::jdiff()
                     lzPosOrg - 1, lcOrg, lzPosNew - 1, lcNew)  ;
         #endif
 
+        /* Incremental source scan */
+        if (miSrcScn == 0 && lzPosOrg == mzAhdOrg) {
+            mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
+            gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
+            mzAhdOrg ++ ;
+        }
+
+        /* Compare and process... */
         if (lcOrg == lcNew){
             /* Output or count equals */
-            if (lbEql){
-                lzEql ++ ;
+            if (! lbEql){
+                // the first bytes may be kept in reserve, then switch to counting asap
+                lbEql = mpOut->put(EQL, 1, lcOrg, lcNew, lzPosOrg, lzPosNew) ;
+                lzAhd -- ;      // decrease ahead counter
+
+                lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
+            } else if (miSrcScn == 0){
+                while (lcOrg == lcNew && lcNew >= 0 && lzPosNew < lzLapSml){
+                    lzEql ++;       // increase equal counter
+                    lzAhd -- ;      // decrease ahead counter
+
+                    if (lzPosOrg == mzAhdOrg) {
+                        mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
+                        gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
+                        mzAhdOrg ++ ;
+                    }
+
+                    lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+                    lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
+                }
             } else {
-                // the first four bytes may be kept in reserve, then switch to counting asap
-                lbEql = mpOut->put(EQL, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
-            }
+                while (lcOrg == lcNew && lcNew >= 0 && lzPosNew < lzLapSml){
+                    lzEql ++;       // increase equal counter
+                    lzAhd -- ;      // decrease ahead counter
 
-            /* Take next byte from each file ... */
-            lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
-            lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
-
-            /* decrease ahead counter */
-            lzAhd -- ;
-
-            /* show progress */
-            if ((miVerbse > 1) && (lzLapSml <= lzPosNew)){
-              fprintf(JDebug::stddbg, "\rComparing : %12" PRIzd "Mb", lzPosNew / PGSMRK);
-              lzLapSml=lzPosNew+PGSMRK;
+                    lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+                    lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
+                }
             }
         } else if (lzAhd > 0) {
             /* Output accumulated equals */
@@ -204,19 +227,20 @@ int JDiff::jdiff()
             /* Output difference */
             if (lcOrg < 0) {
                 mpOut->put(INS, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
+                lzAhd -- ;      // decrease ahead counter
 
-                /* Take next byte from each file ... */
+                /* Take next byte from destination file ... */
                 lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
             } else {
-                mpOut->put(MOD, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
+                while (lcOrg != lcNew && lcOrg >= 0 && lcNew >= 0 && lzAhd > 0){
+                    mpOut->put(MOD, 1, lcOrg, lcNew, lzPosOrg, lzPosNew);
+                    lzAhd -- ;      // decrease ahead counter
 
-                /* Take next byte from each file ... */
-                lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
-                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
+                    /* Take next byte from each file ... */
+                    lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
+                    lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
+                }
             }
-
-            /* decrease ahead counter */
-            lzAhd-- ;
 
         } else if ((liFnd == 1) && (lzAhd == 0)) {
             // Oops: the "found" solution did not point to an equal region
@@ -224,9 +248,9 @@ int JDiff::jdiff()
             // but we should hope this does not happen too much
             liFnd = 0 ;
 
-            // Report the miss to our user
+            // Report the miss to the user
             miHshErr++ ;
-            if (miVerbse>2){
+            if (miVerbse>2 && mbCmpAll){
               fprintf(JDebug::stddbg, "\nInaccurate solution at positions %" PRIzd "/%" PRIzd "!\n", lzPosOrg, lzPosNew);
               fprintf(JDebug::stddbg, "Comparing : ...           ");
             }
@@ -259,30 +283,41 @@ int JDiff::jdiff()
                 fprintf(JDebug::stddbg, "Current position in new file= %" PRIzd "\n", lzPosNew) ;
             #endif
 
-            /* show progress */
-            if ((miVerbse > 1) && (lzLapSml <= lzPosNew)) {
-              fprintf(JDebug::stddbg, "\rComparing : %12" PRIzd "Mb", lzPosNew / PGSMRK);
-              lzLapSml=lzPosNew+PGSMRK;
-            }
-
             /* Execute offsets */
             if (lzSkpOrg > 0) {
-              mpOut->put(DEL, lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
-              lzPosOrg += lzSkpOrg ;
-              lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
+                mpOut->put(DEL, lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
+                lzPosOrg += lzSkpOrg ;
+
+//@                if (miSrcScn == 0 && mzAhdOrg < lzPosOrg) {
+//                    /* Incremental source scan */
+//                    while (mzAhdOrg < lzPosOrg) {
+//                        lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
+//                        mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
+//                        gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
+//                        mzAhdOrg ++ ;
+//                    }
+//                }
+
+                lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
             } else if (lzSkpOrg < 0) {
-              mpOut->put(BKT, - lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
-              lzPosOrg += lzSkpOrg ;
-              lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
+                mpOut->put(BKT, - lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
+                lzPosOrg += lzSkpOrg ;
+                lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
             }
             if (lzSkpNew > 0) {
-              while (lzSkpNew > 0 && lcNew > EOF) {
-                mpOut->put(INS, 1, 0, lcNew, lzPosOrg, lzPosNew);
-                lzSkpNew-- ;
-                lcNew = mpFilNew->get(++ lzPosNew, JFile::Read);
-              }
+                while (lzSkpNew > 0 && lcNew > EOF) {
+                    mpOut->put(INS, 1, 0, lcNew, lzPosOrg, lzPosNew);
+                    lzSkpNew-- ;
+                    lcNew = mpFilNew->get(++ lzPosNew, JFile::Read);
+                }
             }
         } /* if lcOrg == lcNew */
+
+        /* show progress */
+        if ((miVerbse > 1) && (lzLapSml <= lzPosNew)) {
+          fprintf(JDebug::stddbg, "\rComparing : %12" PRIzd "Mb", lzPosNew / PGSMRK);
+          lzLapSml=lzPosNew+PGSMRK;
+        }
     } /* while lcNew >= 0 */
 
     /* Flush output buffer */
@@ -381,96 +416,42 @@ int JDiff::search (
     /* Prescan the source file to build the hashtable */
     switch (miSrcScn) {
     case 1: {
-        // do a full prescan
-        int liRet = buildFullIndex() ;
-        if (liRet < 0)
-            return liRet ;
-        miSrcScn = 2 ;
-    }
-    break ;
+            // do a full prescan
+            int liRet = buildFullIndex() ;
+            if (liRet < 0)
+                return liRet ;
+            miSrcScn = 2 ;
+        }
+        break ;
 
     case 0: {
-        // incremental sourcefile scanning: always soft-reading
-        JFile::eAhead liSftOrg = JFile::SoftAhead;
-
-        // reinitialize ?
-        off_t const lzBufPos = mpFilOrg->getBufPos() ;
-        long const  llBufSze = mpFilOrg->getBufSze() ;
-        if (mzAhdOrg < lzBufPos || mzAhdOrg >= lzBufPos + llBufSze){
-            mzAhdOrg = 0 ;
-            // no need to keep old index table entries if backtracing is not allowed
-            if (! mbSrcBkt)
-                gpHsh->reset() ;
-        }
-
-        // Set lookahead base position
-        mpFilOrg->set_lookahead_base(azRedOrg);
-
-        // (re-)initialize the hash function
-        if (mzAhdOrg==0){
-            // scan the part of the source file available within the buffer
-            mzAhdOrg = lzBufPos ;
-            if (mzAhdOrg < -1 )
-                mzAhdOrg = -1 ; // for non-buffering sources
-
-            // initialize the hash function
-            mlHshOrg = 0 ;
-            miEqlOrg = 0 ;
-            miPrvOrg = EOF ;
-            if (mzAhdOrg == -1 )
-                liMax = SMPSZE - 1;         // to initialize mkHsh (miEql=0 is correct)
-            else
-                liMax = SMPSZE * 2 - 1;     // to initialize miEql and mkHsh
-            for (int liIdx = 0; liIdx < liMax; liIdx++) {
-                miValOrg = mpFilOrg->get(++ mzAhdOrg, liSftOrg) ;
-                if (miValOrg <= EOF){
-                    mzAhdOrg = 0;   // initialization failed
-                    break ;
-                }
-                mlHshOrg = hash(mlHshOrg, miPrvOrg, miValOrg, miEqlOrg) ;
-
-                // The following line needs some explication.
-                // We want to terminate the initialization ASAP, every byte counts in -ff mode
-                // To simplify, consider SMPSZE == 8, so we need 7 valid miEql's to initialize
-                // Take for example an initialization starting at position 4 (hex data)
-                //    mzAhd :   4 5 6 7 8 9 A B C D E F ...
-                //    miVal :   0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4  ...
-                //    miPrv : EOF 0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4 ...
-                //    miEql :   0 1 2 3 0 0 0 0 0 0 0 ...
-                //    liIdx :   0 1 2 3 4 5 6 7 8 9 A B C ...
-                //    init            +-----------+
-                // We don't know if position 3 is 0 or not, so we don't know what value miEql
-                // at position 4 should have. So the first four bytes cannot be used,
-                // because miEql may not be correct.
-                // As soon as miEql is reset to 0 by miPrv != miVal, miEql becomes correct
-                // and initialization will be correct after 7 more bytes (position D in the example)
-                // Reset can be detected by miEql != liIdx. Hence, when miEql != liIdx,
-                // we can reduce liMax to liIdx + 7 (or better SMPSZE - 1) and add more bytes
-                // to the index hashtable.
-                if (miEqlOrg != liIdx && liMax > liIdx + (SMPSZE - 1))
-                    liMax = liIdx + (SMPSZE - 1) ;
+            // Set lookahead base position and determine lookahead range
+            mpFilOrg->set_lookahead_base(azRedOrg);
+            if (mbSrcBkt){
+                // Backtrace allowed: go ahead as far as possible
+                liMax = miAhdMax ;
+            } else {
+                // Backtrace not allowed:
+                // - keep (mzAhdMax - azRedOrg) == miAhdMax / 2
+                // - except at the start of the file (azRedOrg < miAhdMax)
+                if (mzAhdOrg < (miAhdMax / 2))
+                    liMax = miAhdMax - mzAhdOrg ;
+                else
+                    liMax = miAhdMax / 2 - (mzAhdOrg - azRedOrg) ;
             }
-        }
 
-        // scan the sourcefile till the buffer is exhausted
-        if (mzAhdOrg > 0){
-            for (liMax=miAhdMax; liMax > 0 ; liMax --) {
-                miValOrg = mpFilOrg->get(++ mzAhdOrg, liSftOrg) ;
-                if (miValOrg <= EOF){
-                    mzAhdOrg --;
+            // scan ahead till EOB or EOF
+            int lcOrg ;
+            for ( ; liMax > 0 ; liMax --) {
+                lcOrg = mpFilOrg->get(mzAhdOrg, JFile::SoftAhead) ;
+                if (lcOrg <= EOF)
                     break ;
-                }
-                mlHshOrg = hash(mlHshOrg, miPrvOrg, miValOrg, miEqlOrg) ;
+                mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
                 gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
+                mzAhdOrg ++ ;
             }
-        }
-
-        // check for file-io errors
-        if (miValOrg < EOB ) {
-            return miValOrg ;
-        }
-    } /* case 0 */
-    break ;
+        } /* case 0 */
+        break ;
     } /* switch scan source file - build hashtable */
 
     /*
@@ -521,7 +502,7 @@ int JDiff::search (
 
     /* Cleanup the old matches */
     int liFnd=0;          /**< Number of matches found                        */
-    switch (gpMch->cleanup(lzBseOrg, azRedNew, 0)){
+    switch (gpMch->cleanup(lzBseOrg, azRedNew)){
     case JMatchTable::Error:
     case JMatchTable::Full: // table is full
         liFnd = miMchMax ;
@@ -804,4 +785,5 @@ int JDiff::buildFullIndex ()
     else
         return 0 ;
 } /* buildFullIndex */
+
 } /* namespace */
