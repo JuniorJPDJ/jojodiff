@@ -144,6 +144,9 @@
  * joheirba  v085s-z   Oct 2020 Replace freelist by new&old-lists
  * joheirba  v085aa-al Oct 2020 Tuning min and max distances and skip-checks
  * joheirba  v085am-aw Oct 2020 Incremental search
+ * joheirba  v085ax-bf Oct 2020 Improve accuracy for non-compared matches (-f or -p)
+ * joheirba  v085bg-bl Oct 2020 Improve accuracy of incremental scanning (-ff)
+ * joheirba  v085bm-ca Oct 2020 Tune isOld logic
  *
  *******************************************************************************/
 
@@ -170,9 +173,9 @@
   * 08-2020  drop   Drop -a and -x
   * 08-2020  083r   convert Mb/kb upon instantiation
   * 08-2020  083o   Integrate JMatchTable add, get and cleanup
-  * 08-2020         Remove JFileStreamAhead.miRed
+  * 08-2020  085a   Remove JFileStreamAhead.miRed
   * 08-2020  083x   Remove potential indefinite loop in uf_get_outofbuf ?
-  * 08-2020         Make EQLMAX a parameter
+  * 08-2020  drop   Make EQLMAX a parameter
   * 08-2020  fail   Reduce garbage collect in ufFnhAhd
   * 08-2020  fail   Reduce incremental garbage collect in ufMchBst for future matches
   * 08-2020  083q   Adaptive liDst in ufMchBst based on azBstNew-azRedNew+EQLMAX
@@ -180,12 +183,12 @@
   * 08-2020  083q   Improve hash function: hash2
   * 08-2020  083s   Direct reading in buffer space for better performance ?
   * 08-2020  083z   Check for IO errors in JMatchTable add and get
-  * 09-2020         Refactor scrollback, align with blocksize
-  * 09-2020         JMatchTable::check - Performance: Soft ahead once EQLSZE bytes are found ?
-  * 09-2020         JMatchTable::check - Accuracy: Distinguish between EOB and short equals.
-  * 09-2020         Remove liMax logic from ufFndAhd ?
-  * 09-2020         Incremental source scanning: separate function, full buffer with getbuf
-  * 09-2020         Optimize Cycled logic in buffer logic (JFileAhead)
+  * 09-2020  085a   Refactor scrollback, align with blocksize
+  * 09-2020  drop   JMatchTable::check - Performance: Soft ahead once EQLSZE bytes are found ?
+  * 09-2020  085b   JMatchTable::check - Accuracy: Distinguish between EOB and short equals.
+  * 09-2020  drop   Remove liMax logic from ufFndAhd ?
+  * 09-2020  085b   Incremental source scanning: separate function, full buffer with getbuf
+  * 09-2020  085a   Optimize Cycle logic in buffer logic (JFileAhead)
   * 10-2020         Refactor JMatchTable logic: reduce cleanup() calls
   *
   ******************************************************************************/
@@ -324,7 +327,6 @@ int main(int aiArgCnt, char *acArg[])
 
             // larger buffers (more soft-ahead searching)
             llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 4 ;
-            llBufNew = (llBufNew <= 0 ? 1 : llBufNew) * 4 ;
             break;
         case 'f': // faster (or rather: lazier)
             if (lbCmpAll) {
@@ -336,7 +338,6 @@ int main(int aiArgCnt, char *acArg[])
 
                 // increase buffer size to have more lookahead indexing
                 llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 16 ;
-                llBufNew = (llBufOrg <= 0 ? 1 : llBufNew) * 16 ;
             } else {
                 // even faster (lazier)
                 liSrcScn = 0 ;          // No indexing scan, indexing is limited ookahead search
@@ -346,16 +347,12 @@ int main(int aiArgCnt, char *acArg[])
             liHshMbt /= 2 ;             // Reduce index table by 2
             break;
         case 'p': // sequential source file
-            if (llBufOrg < 32)
-                llBufOrg = 32 ;           // larger buffer (more soft-ahead searching)
             lbSeqOrg = true ;
             lbCmpAll = false ;            // only compare data within the buffer
             lbSrcBkt = false ;            // only backtrack on source file in buffer
             liSrcScn = 0;                 // no pre-scan indexing
             break;
         case 'q': // sequential destination file
-            if (llBufNew < 16)
-                llBufNew = 16 ;           // larger buffer (more soft-ahead searching)
             lbSeqNew = true ;
             liMchMin = 0;                 // only search within the buffer
             break;
@@ -403,7 +400,7 @@ int main(int aiArgCnt, char *acArg[])
 
         case 'a': // search-ahead-size
             if (optarg)
-                liAhdMax = atoi(optarg) / 2 * 1024 ;
+                liAhdMax = atoi(optarg) * 1024 ;
             else
                 liAhdMax = 0 ;
             break;
@@ -423,11 +420,17 @@ int main(int aiArgCnt, char *acArg[])
             }
             break;
         case 'm': // "buffer-size",       required_argument
-            llBufNew = atoi(optarg) ;
-            if (llBufNew < 0)
-                llBufNew=0;             // on error, switch to default
-            if (llBufOrg == 0)
+            if (llBufNew == 0){
+                // first -m
+                llBufNew = atoi(optarg) / 2 ;
                 llBufOrg = llBufNew ;   // first -m specifies source and destination buffer
+            } else if (llBufOrg == llBufNew) {
+                // second -m
+                llBufOrg *= 2 ;
+                llBufNew = atoi(optarg) ;
+            } else {
+                // third and subsequent -m: do nothing
+            }
             break;
         case 'n': // "search-min",        required_argument
             liMchMin = atoi(optarg) ;
@@ -512,13 +515,9 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "the first by \"undiffing\". JDiff aims for the smallest possible diff file.\n\n"),
 
         fprintf(JDebug::stddbg, "Usage: jdiff -j [options] <source file> <destination file> [<diff file>]\n") ;
-        #ifdef JDIFF_DEDUP
-        //@fprintf(JDebug::stddbg, "   or: jdiff -y [options] <source file> <destination file>\n") ;
-        #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "   or: jdiff -u [options] <source file> <diff file> [<destination file>]\n\n") ;
         fprintf(JDebug::stddbg, "  -j                       JDiff:  create a difference file.\n");
         #ifdef JDIFF_DEDUP
-        //@fprintf(JDebug::stddbg, "  -y                       JDedup: deduplicate files\n") ;
         #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "  -u                       Undiff: undiff a difference file.\n\n");
 
@@ -540,7 +539,7 @@ int main(int aiArgCnt, char *acArg[])
         fprintf(JDebug::stddbg, "  -s --stdio               Use stdio files (for testing).\n");
         #endif // JDIFF_STDIO_ONLY
         #ifdef JDIFF_DEDUP
-        fprintf(JDebug::stddbg, "  -y --reflink             Reflink to source file if possible.\n") ;
+        fprintf(JDebug::stddbg, "  -y --reflink             Reflink to source file when possible.\n") ;
         #endif // JDIFF_DEDUP
         fprintf(JDebug::stddbg, "\n");
         fprintf(JDebug::stddbg, "  -a --search-size <size>  Size (in KB) to search (default=buffer-size).\n");
@@ -615,9 +614,11 @@ int main(int aiArgCnt, char *acArg[])
         exit(- EXI_ARG);
     }
 
-    /* Verify and process parameters, convet MB in bytes etc... */
-    llBufOrg = (llBufOrg <= 0 ? 1 : llBufOrg) * 1024 * 1024 ;
-    llBufNew = (llBufNew <= 0 ? 1 : llBufNew) * 1024 * 1024 ;
+    // Set default values for llBlk and liBlk
+    llBufOrg = (llBufOrg > 0 ? llBufOrg : lbSeqOrg ? 32 : 1) ;
+    llBufNew = (llBufNew > 0 ? llBufNew : lbSeqNew ? 16 : llBufOrg) * 1024 * 1024 ;
+    llBufOrg = llBufOrg * 1024 * 1024 ;
+    liBlkSze = (liBlkSze < 4096 ? 4096 : liBlkSze) ;
 
     // Buffer size cannot be zero and must be aligned on block size
     // Block size  cannot be larger than buffer size
@@ -637,6 +638,8 @@ int main(int aiArgCnt, char *acArg[])
     // Default search ahead window
     if (liAhdMax==0){
         liAhdMax = llBufNew - liBlkSze ;
+        if (liAhdMax > llBufNew - liBlkSze)
+            liAhdMax = llBufNew - liBlkSze ;
         if (liAhdMax < 4096)
             liAhdMax = 4096 ;
     }

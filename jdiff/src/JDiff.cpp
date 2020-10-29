@@ -156,6 +156,7 @@ int JDiff::jdiff()
 
     bool  lbEql = false;    /**< accumulate equal bytes? */
     off_t lzEql = 0;        /**< accumulated equal bytes */
+    off_t lzCnt ;           /**< counter */
 
     int liFnd = 0;          /**< offsets are pointing to a valid solution (= equal regions) ?   */
     off_t lzAhd=0;          /**< number of bytes to advance on both files to reach the solution */
@@ -198,27 +199,28 @@ int JDiff::jdiff()
                 lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
                 lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
             } else if (miSrcScn == 0){
+                lzCnt = 0;
                 while (lcOrg == lcNew && lcNew >= 0 && lzPosNew < lzLapSml){
-                    lzEql ++;       // increase equal counter
-                    lzAhd -- ;      // decrease ahead counter
-
+                    lzCnt ++ ;
                     if (lzPosOrg == mzAhdOrg) {
                         mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
                         gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
                         mzAhdOrg ++ ;
                     }
-
                     lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
                     lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
                 }
+                lzEql += lzCnt ;       // increase equal counter
+                lzAhd -= lzCnt ;       // decrease ahead counter
             } else {
+                lzCnt = 0;
                 while (lcOrg == lcNew && lcNew >= 0 && lzPosNew < lzLapSml){
-                    lzEql ++;       // increase equal counter
-                    lzAhd -- ;      // decrease ahead counter
-
+                    lzCnt ++ ;
                     lcOrg = mpFilOrg->get(++ lzPosOrg, JFile::Read) ;
                     lcNew = mpFilNew->get(++ lzPosNew, JFile::Read) ;
                 }
+                lzEql += lzCnt ;       // increase equal counter
+                lzAhd -= lzCnt ;       // decrease ahead counter
             }
         } else if (lzAhd > 0) {
             /* Output accumulated equals */
@@ -287,16 +289,6 @@ int JDiff::jdiff()
             if (lzSkpOrg > 0) {
                 mpOut->put(DEL, lzSkpOrg, 0, 0, lzPosOrg, lzPosNew) ;
                 lzPosOrg += lzSkpOrg ;
-
-//@                if (miSrcScn == 0 && mzAhdOrg < lzPosOrg) {
-//                    /* Incremental source scan */
-//                    while (mzAhdOrg < lzPosOrg) {
-//                        lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
-//                        mlHshOrg = hash(mlHshOrg, miPrvOrg, lcOrg, miEqlOrg) ;
-//                        gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
-//                        mzAhdOrg ++ ;
-//                    }
-//                }
 
                 lcOrg = mpFilOrg->get(lzPosOrg, JFile::Read);
             } else if (lzSkpOrg < 0) {
@@ -375,7 +367,7 @@ inline hkey JDiff::hash ( hkey const akCurHsh, int &acOld, int const acNew, int 
         if (aiEql != 0)     // improves performance
             aiEql = 0;
     }
-    return (akCurHsh * 2) + acNew + aiEql ;
+    return (akCurHsh * 2) + acNew + aiEql ; // multiplication by 2 is faster than << 2
 }
 
 
@@ -408,7 +400,6 @@ int JDiff::search (
 
     int liMax;          /**< Max number of bytes to look ahead              */
     int liBck;          /**< Number of bytes to look back                   */
-    int liRlb;          /**< Reliability range for current hashtable        */
 
     /* Set Lap for progress counter */
     if (miVerbse > 1) lzLap = azRedNew + PGSMRK ;
@@ -421,6 +412,7 @@ int JDiff::search (
             if (liRet < 0)
                 return liRet ;
             miSrcScn = 2 ;
+            miRlb = gpHsh->get_reliability() ;
         }
         break ;
 
@@ -450,6 +442,7 @@ int JDiff::search (
                 gpHsh->add(mlHshOrg, mzAhdOrg, miEqlOrg) ;
                 mzAhdOrg ++ ;
             }
+            miRlb = gpHsh->get_reliability() ;
         } /* case 0 */
         break ;
     } /* switch scan source file - build hashtable */
@@ -473,11 +466,8 @@ int JDiff::search (
     else
         liMax = miAhdMax ;
 
-    liRlb = gpHsh->get_reliability() ;
-    if (liMax < liRlb) {
-        // search at least the reliability distance
-        liMax = liRlb  ;
-    }
+    if (liMax < miRlb)
+        liMax = miRlb  ;    // search at least the reliability distance
 
     /*
     * How many bytes to look back ?
@@ -493,9 +483,9 @@ int JDiff::search (
         // mzAhdNew is stil ahead of azRedNew from a previous lookahead
         // continue where the previous left off
         liBck= 0 ;
-    else if (liBck > liRlb + 2 * SMPSZE - 1)
-        // Go back at most liRlb + 2 * SMPSZE to anticipate a reinitialization
-        liBck= liRlb + 2 * SMPSZE - 1;
+    else if (liBck > miRlb + 2 * SMPSZE - 1)
+        liBck = miRlb + 2 * SMPSZE - 1;   // 2 * SMPSZE to anticipate a reinitialization
+
 
     /* Do not backtrace before lzBseOrg */
     lzBseOrg = (mbSrcBkt?0:mpFilOrg->getBufPos()) ;
@@ -510,8 +500,8 @@ int JDiff::search (
 
     case JMatchTable::Best: // a good match is already available : reduce search
     case JMatchTable::Good: // a good match is already available : reduce search
-        if (liMax > liRlb * 2)
-            liMax = liRlb * 2 ;   // reduce search (but not to zero)
+        if (liMax > miRlb * 2)
+            liMax = miRlb * 2 ;   // reduce search (but not to zero)
         break ;
 
     default: ;
@@ -561,7 +551,23 @@ int JDiff::search (
                 }
                 mlHshNew = hash(mlHshNew, miPrvNew, miValNew, miEqlNew) ;
 
-                // See explication above at initialization of mlHshOrg
+                // The following line needs some explication.
+                // The goal of this line is to terminate the initialization ASAP.
+                // To explain, consider SMPSZE == 8, then we need 7 valid miEql's to initialize.
+                // For example, consider an initialization starting at position 4 (hex data)
+                //    mzAhd :   4 5 6 7 8 9 A B C D E F ...
+                //    miVal :   0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4  ...
+                //    miPrv : EOF 0 0 0 0 7 6 5 4 3 2 1 0 4 9 7 4 ...
+                //    miEql :   0 1 2 3 0 0 0 0 0 0 0 ...
+                //    liIdx :   0 1 2 3 4 5 6 7 8 9 A B C ...
+                //    init            +-----------+
+                // We don't know if position 3 is 0 or not, so we don't know what value miEql
+                // at position 4 should have. So the first four bytes cannot be used,
+                // because miEql may not be correct.
+                // As soon as miEql is reset to 0 by miPrv != miVal, miEql becomes correct
+                // and initialization will be ok after SMPSZE-1 bytes (position D in the example)
+                // Reset can be detected by miEql != liIdx. Hence, when miEql != liIdx,
+                // we can reduce liMax to liIdx + SMPSZE - 1.
                 if (liIdx != miEqlNew && liBck > liIdx + (SMPSZE - 1))
                     liBck = liIdx + (SMPSZE - 1) ;
             }
@@ -615,8 +621,8 @@ int JDiff::search (
                         // to search before finding all solutions hidden behind the unreliability.
                         // So after the (estimated) reliability range, no better solution should be found anymore.
                         // reduce the lookahead to be sure and to improve performance
-                        if (liMax > liRlb)
-                            liMax = liRlb ;
+                        if (liMax > miRlb)
+                            liMax = miRlb ;
                     // no break: continue with next case
 
                     case JMatchTable::Valid:        // solution added

@@ -30,8 +30,8 @@
  *
  * Hash function (see JDiff.cpp::hash) on array of bytes:
  *
- * Principle:
- * ----------
+ * Principles:
+ * -----------
  * Input:  a[n]   8-bit values (characters, n=32 or 64 or ...)
  *         e[n]   equality values, each e[x] is between 0 and SMPSZE
  *                  e[x] = 0             if a[x-1] <> a[x]

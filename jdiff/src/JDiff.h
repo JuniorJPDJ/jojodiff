@@ -246,37 +246,37 @@ private:
 	void flushEql(const off_t &azPosOrg, const off_t &azPosNew, off_t &azEql, bool &abEql) const ;
 
 	/* Context */
-	JFile * const mpFilOrg ;    // Original file to read
-	JFile * const mpFilNew ;    // New file to read
-	JOut  * const mpOut ;       // Output handler
-	JHashPos * gpHsh ;          // Hashtable containing hashes from mpFilOrg.
-	JMatchTable * gpMch ;       // Table of matches
+	JFile * const mpFilOrg ;    /**< Original file to read                      */
+	JFile * const mpFilNew ;    /**< New file to read                           */
+	JOut  * const mpOut ;       /**< Output handler                             */
+	JHashPos * gpHsh ;          /**< Hashtable containing hashes from mpFilOrg. */
+	JMatchTable * gpMch ;       /**< Table of matches                           */
 
 	/* Settings */
-	const int miVerbse;     /* Vebosity level */
-	const bool mbSrcBkt;    /* Allow bactrace on original file? */
-	const int miMchMax;     /* Max number of matches to find */
-	const int miMchMin;     /* Min number oif matches to find */
-	const int miAhdMax ;    /* Max number of bytes to look ahead */
-    const bool mbCmpAll ;   /* Compare all matches, even if data not in buffer? */
-    int  miSrcScn;          /* Prescan original file: 0=no, 1=yes, 2=done */
+	const int miVerbse;     /**< Vebosity level                                 */
+	const bool mbSrcBkt;    /**< Allow bactrace on original file?               */
+	const int miMchMax;     /**< Max number of matches to find                  */
+	const int miMchMin;     /**< Min number oif matches to find                 */
+	const int miAhdMax ;    /**< Max number of bytes to look ahead              */
+    const bool mbCmpAll ;   /**< Compare all matches, even if data not in buffer? */
+    int  miSrcScn;          /**< Prescan original file: 0=no, 1=yes, 2=done     */
 
     /* Search-ahead state */
-	off_t mzAhdOrg=0;        // Current ahead position on original file
-	off_t mzAhdNew=0;        // Current ahead position on new file
-	hkey mlHshOrg=0;         // Current hash value for original file
-	hkey mlHshNew=0;         // Current hash value for new file
-	//@int miValOrg=0;          // Current  file value
-	int miPrvOrg=0;          // Previous file value
-	int miValNew=0;          // Current  file value
-	int miPrvNew=0;          // Previous file value
-	int miEqlOrg=0;          // Indicator for equal bytes in current sample
-	int miEqlNew=0;          // Indicator for equal bytes in current sample
+	off_t mzAhdOrg=0;       /**< Current ahead position on original file        */
+	off_t mzAhdNew=0;       /**< Current ahead position on new file             */
+	hkey mlHshOrg=0;        /**< Current hash value for original file           */
+	hkey mlHshNew=0;        /**< Current hash value for new file                */
+	int miPrvOrg=0;         /**< Previous file value                            */
+	int miValNew=0;         /**< Current  file value                            */
+	int miPrvNew=0;         /**< Previous file value                            */
+	int miEqlOrg=0;         /**< Indicator for equal bytes in current sample    */
+	int miEqlNew=0;         /**< Indicator for equal bytes in current sample    */
+    int miRlb=0;            /**< Reliability range for current hashtable        */
 
     /*
      * Statistics about operations
      */
-    int miHshErr ;         /* Number of false hash hits                         */
+    int miHshErr ;         /**< Number of false hash hits                       */
 
 }; // class JDiff
 

@@ -163,8 +163,8 @@ private:
     /**
     * @brief Check if given solution is the best one.
     */
-    bool isBest(rMch * const lpCur, off_t azRedNew, off_t lzTstOrg, off_t lzTstNew,
-                int liCurCmp, int liCurCnt = -1) ;
+    bool isBest(rMch * const lpCur, off_t const azRedNew,
+                off_t lzTstOrg, off_t lzTstNew, int liCurCmp) ;
 
     /**
     * @brief Check if a match can be reused (deleted)

@@ -330,7 +330,7 @@ int JPatcht::jpatch ()
     } /* while ! EOF */
 
     if (miVerbse >= 1) {
-        fprintf(JDebug::stddbg, P8zd" " P8zd " EOF\n",
+        fprintf(JDebug::stddbg, P8zd " " P8zd " EOF\n",
                 lzPosOrg, lzPosOut)  ;
     }
 
